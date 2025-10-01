@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import random
-import Total_points
+import Total_points as Total_points
 from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg

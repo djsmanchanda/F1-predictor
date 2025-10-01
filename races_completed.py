@@ -7,7 +7,7 @@ response_sessions = requests.get(url_sessions)
 data_sessions = response_sessions.json()
 
 # Filter for race sessions only and extract session keys
-race_session_keys = [session['session_key'] for session in data_sessions if session['session_type'] == 'Race']
+race_session_keys = [session['session_key'] for session in data_sessions if session['session_name'] == 'Race']
 
 print(f"Total race sessions found: {len(race_session_keys)}")
 print("Race session keys:")

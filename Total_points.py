@@ -4,8 +4,11 @@ import os
 from datetime import datetime
 import random
 
-# Persistent cache file
+# Persistent cache files
 CACHE_FILE = 'api_cache.json'
+POINTS_CACHE_FILE = 'points_cache.json'
+POINTS_TABLE_FILE = 'points_progression_table.json'
+POINTS_TABLE_CSV = 'points_progression_table.csv'
 
 # Load cache from file if it exists
 api_cache = {}
@@ -16,10 +19,27 @@ if os.path.exists(CACHE_FILE):
     except (json.JSONDecodeError, IOError):
         api_cache = {}
 
+# Load points cache from file if it exists
+points_cache = {}
+if os.path.exists(POINTS_CACHE_FILE):
+    try:
+        with open(POINTS_CACHE_FILE, 'r') as f:
+            points_cache = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        points_cache = {}
+
 def save_cache():
     try:
         with open(CACHE_FILE, 'w') as f:
             json.dump(api_cache, f, indent=2)
+    except IOError:
+        pass  # Silently fail if can't save
+
+def save_points_cache():
+    """Save the points cache to file"""
+    try:
+        with open(POINTS_CACHE_FILE, 'w') as f:
+            json.dump(points_cache, f, indent=2)
     except IOError:
         pass  # Silently fail if can't save
 
@@ -132,16 +152,42 @@ def print_session_results(session_keys, session_type, n):
             print(f"Position {result['position']}: Driver #{result['driver_number']} - {result['points']} points")
         print("\n")
 
-def add_points(session_keys, n, driver_points):
+def add_points(session_keys, n, driver_points, cache_key_prefix=''):
+    """Add points from sessions and cache results per session"""
     for key, country in session_keys:
-        results = session_result(key, n=n)
-        for result in results:
-            driver_number = int(result['driver_number'])
-            points = result['points']
-            if driver_number in driver_points:
-                driver_points[driver_number] += points
-            else:
-                driver_points[driver_number] = points
+        cache_key = f"{cache_key_prefix}_{key}_{country}"
+        total_cache_key = f"{cache_key_prefix}_{key}_{country}_TOTAL"
+        
+        # Check if this session is already cached
+        if cache_key in points_cache:
+            # Use cached points
+            cached_results = points_cache[cache_key]
+            for driver_number_str, points in cached_results.items():
+                driver_number = int(driver_number_str)
+                if driver_number in driver_points:
+                    driver_points[driver_number] += points
+                else:
+                    driver_points[driver_number] = points
+        else:
+            # Fetch and cache new results
+            results = session_result(key, n=n)
+            session_points = {}
+            for result in results:
+                driver_number = int(result['driver_number'])
+                points = result['points']
+                session_points[driver_number] = points
+                if driver_number in driver_points:
+                    driver_points[driver_number] += points
+                else:
+                    driver_points[driver_number] = points
+            
+            # Cache the results for this session
+            points_cache[cache_key] = session_points
+            save_points_cache()
+        
+        # Always cache the cumulative total after this session
+        points_cache[total_cache_key] = driver_points.copy()
+        save_points_cache()
 
 def get_driver_names(year):
     url_drivers = f"https://api.jolpi.ca/ergast/f1/{year}/drivers/"
@@ -173,13 +219,158 @@ def get_points_after_race_week(k, year=2025):
     driver_points = {}
     for i in range(min(k, len(race_keys))):
         key, country = race_keys[i]
-        add_points([(key, country)], 10, driver_points)
+        add_points([(key, country)], 10, driver_points, cache_key_prefix=f'{year}_race')
         # Add sprint if exists for that country
         sprint_session = next((k for k, c in sprint_keys if c == country), None)
         if sprint_session:
-            add_points([(sprint_session, country)], 8, driver_points)
+            add_points([(sprint_session, country)], 8, driver_points, cache_key_prefix=f'{year}_sprint')
     cache_points[(k, year)] = driver_points.copy()
     return driver_points
+
+def get_total_points_at_session(session_key, country, cache_key_prefix):
+    """Retrieve cached total accumulated points after a specific session"""
+    total_cache_key = f"{cache_key_prefix}_{session_key}_{country}_TOTAL"
+    if total_cache_key in points_cache:
+        # Convert string keys to int keys for consistency
+        return {int(k): v for k, v in points_cache[total_cache_key].items()}
+    return None
+
+def print_total_points_history(race_keys, sprint_keys, driver_names, year=2025):
+    """Print the total points standings after each race/sprint in a 2D table"""
+    print("\n" + "="*200)
+    print("CHAMPIONSHIP STANDINGS - POINTS PROGRESSION TABLE")
+    print("="*200)
+    
+    # Combine all sessions chronologically (races only for cleaner table)
+    all_sessions = []
+    for key, country in race_keys:
+        all_sessions.append((key, country, 'R', f'{year}_race'))
+    
+    # Collect all points data
+    all_drivers = set()
+    points_data = {}
+    
+    for key, country, session_type, prefix in all_sessions:
+        totals = get_total_points_at_session(key, country, prefix)
+        if totals:
+            points_data[(key, country)] = totals
+            for driver_num_str in totals.keys():
+                all_drivers.add(int(driver_num_str))
+    
+    # Get final standings to sort drivers
+    if all_sessions:
+        last_key, last_country, _, last_prefix = all_sessions[-1]
+        final_totals = get_total_points_at_session(last_key, last_country, last_prefix)
+        if final_totals:
+            sorted_drivers = sorted(
+                [(int(d), int(p)) for d, p in final_totals.items()],
+                key=lambda x: x[1],
+                reverse=True
+            )[:10]  # Top 10 drivers by points for display
+            all_sorted_drivers = sorted(
+                [(int(d), int(p)) for d, p in final_totals.items()],
+                key=lambda x: x[0]
+            )  # All drivers sorted by driver number for JSON
+        else:
+            sorted_drivers = [(d, 0) for d in sorted(all_drivers)[:10]]
+            all_sorted_drivers = [(d, 0) for d in sorted(all_drivers)]
+    else:
+        sorted_drivers = [(d, 0) for d in sorted(all_drivers)[:10]]
+        all_sorted_drivers = [(d, 0) for d in sorted(all_drivers)]
+    
+    # Build JSON structure for ALL drivers
+    json_table = {
+        "year": year,
+        "races": [country for key, country, session_type, prefix in all_sessions],
+        "drivers": []
+    }
+    
+    for driver_num, final_pts in all_sorted_drivers:
+        driver_name = driver_names.get(driver_num, f"Driver #{driver_num}")
+        driver_data = {
+            "driver_number": driver_num,
+            "driver_name": driver_name,
+            "points_progression": [],
+            "final_points": final_pts
+        }
+        
+        for key, country, session_type, prefix in all_sessions:
+            totals = points_data.get((key, country), {})
+            pts = totals.get(driver_num, 0)
+            driver_data["points_progression"].append({
+                "race": country,
+                "cumulative_points": int(pts) if pts > 0 else 0
+            })
+        
+        json_table["drivers"].append(driver_data)
+    
+    # Save to JSON file
+    try:
+        with open(POINTS_TABLE_FILE, 'w') as f:
+            json.dump(json_table, f, indent=2)
+        print(f"\nPoints progression table saved to: {POINTS_TABLE_FILE}")
+    except IOError as e:
+        print(f"\nWarning: Could not save points table to file: {e}")
+    
+    # Save to CSV file
+    try:
+        import csv
+        with open(POINTS_TABLE_CSV, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            
+            # Write header row
+            header = ['Driver Number', 'Driver Name'] + [country for key, country, session_type, prefix in all_sessions] + ['Final Points']
+            writer.writerow(header)
+            
+            # Write data rows for each driver
+            for driver_num, final_pts in all_sorted_drivers:
+                driver_name = driver_names.get(driver_num, f"Driver #{driver_num}")
+                row = [driver_num, driver_name]
+                
+                # Add cumulative points for each race
+                for key, country, session_type, prefix in all_sessions:
+                    totals = points_data.get((key, country), {})
+                    pts = totals.get(driver_num, 0)
+                    row.append(int(pts) if pts > 0 else 0)
+                
+                row.append(final_pts)
+                writer.writerow(row)
+        
+        print(f"Points progression table saved to: {POINTS_TABLE_CSV}")
+    except IOError as e:
+        print(f"Warning: Could not save CSV file: {e}")
+    
+    # Print header for console display (top 10 only)
+    header = f"{'Driver':<25} "
+    for key, country, session_type, prefix in all_sessions:
+        # Abbreviate country name to 3 letters
+        country_abbr = country[:3].upper()
+        header += f"{country_abbr:>5} "
+    header += "| FINAL"
+    print(header)
+    print("-" * len(header))
+    
+    # Print each driver's row (top 10 only)
+    for driver_num, final_pts in sorted_drivers:
+        driver_name = driver_names.get(driver_num, f"Driver #{driver_num}")
+        # Truncate long names
+        if len(driver_name) > 23:
+            driver_name = driver_name[:23]
+        row = f"{driver_name:<25} "
+        
+        for key, country, session_type, prefix in all_sessions:
+            totals = points_data.get((key, country), {})
+            pts = totals.get(driver_num, 0)  # Use int key directly
+            if pts > 0:
+                row += f"{int(pts):>5} "
+            else:
+                row += f"{'--':>5} "
+        
+        row += f"| {final_pts:>5}"
+        print(row)
+    
+    print("="*200)
+    print("Note: Shows cumulative points after each race. '--' means 0 points at that stage.")
 
 def print_active_drivers(driver_names):
     print("\nActive F1 Drivers for 2025:")
@@ -226,11 +417,14 @@ def main():
     print_session_results(race_keys, "Race", 10)
     
     driver_points = {}
-    add_points(sprint_keys, 8, driver_points)
-    add_points(race_keys, 10, driver_points)
+    add_points(sprint_keys, 8, driver_points, cache_key_prefix='2025_sprint')
+    add_points(race_keys, 10, driver_points, cache_key_prefix='2025_race')
     
     print_active_drivers(driver_names)
     print_total_points(driver_points, driver_names)
+    
+    # Print championship standings history
+    print_total_points_history(race_keys, sprint_keys, driver_names, 2025)
     
     # Get top 5 drivers
     sorted_current = sorted(driver_points.items(), key=lambda x: x[1], reverse=True)

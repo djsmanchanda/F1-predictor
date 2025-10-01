@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 2025 Championship Simulator</title>
+    
+    <!-- Performance optimizations -->
+    <link rel="preconnect" href="https://youtrition.djsmanchanda.com">
+    <link rel="dns-prefetch" href="https://youtrition.djsmanchanda.com">
+    
+    <link rel="stylesheet" href="styles.css">
+    <script src="loading.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏁 F1 2025 Championship Simulator</h1>
+            <p class="subtitle">Predict the championship outcome based on your scenarios</p>
+        </header>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading race data...</p>
+        </div>
+
+        <div id="error" class="error" style="display: none;">
+            <p>Failed to load data. Please refresh the page.</p>
+        </div>
+
+        <div id="app" style="display: none;">
+            <!-- Current Standings -->
+            <section class="section">
+                <h2>📊 Current Championship Standings</h2>
+                <div id="standings" class="standings-grid"></div>
+            </section>
+
+            <!-- Race Progress -->
+            <section class="section">
+                <div class="race-progress">
+                    <div class="progress-stats">
+                        <div class="stat-card">
+                            <span class="stat-label">Races Completed</span>
+                            <span class="stat-value" id="races-completed">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Races Remaining</span>
+                            <span class="stat-value" id="races-remaining">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Sprints Remaining</span>
+                            <span class="stat-value" id="sprints-remaining">0</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scenarios -->
+            <section class="section">
+                <h2>🎯 Set Your Scenarios</h2>
+                <p class="help-text">Configure race outcomes for remaining events</p>
+                
+                <div class="tabs" id="race-tabs"></div>
+                <div id="scenario-panels" class="scenario-panels"></div>
+            </section>
+
+            <!-- Simulation Controls -->
+            <section class="section">
+                <div class="simulation-controls">
+                    <button id="run-simulation" class="btn btn-primary">
+                        🚀 Run Simulation (1000 iterations)
+                    </button>
+                    <button id="clear-scenarios" class="btn btn-secondary">
+                        🗑️ Clear All Scenarios
+                    </button>
+                </div>
+            </section>
+
+            <!-- Path to Victory -->
+            <section class="section">
+                <h2>🎯 Path to Victory Calculator</h2>
+                <p class="help-text">See what needs to happen for your favorite driver to win the championship</p>
+                <div class="victory-controls">
+                    <select id="victory-driver" class="victory-select">
+                        <option value="">Select a driver...</option>
+                    </select>
+                    <button id="calculate-victory" class="btn btn-accent">
+                        ✨ Calculate Path to Victory
+                    </button>
+                </div>
+                <div id="victory-results" class="victory-results" style="display: none;"></div>
+            </section>
+
+            <!-- Results -->
+            <section class="section" id="results-section" style="display: none;">
+                <h2>🏆 Championship Win Probability</h2>
+                <div id="results" class="results"></div>
+                <div id="winner-animation" class="winner-animation" style="display: none;">
+                    <div class="confetti"></div>
+                    <h3 id="winner-text"></h3>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <footer>
+        <p>Data provided by OpenF1 API | Built for F1 fans 🏎️</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
