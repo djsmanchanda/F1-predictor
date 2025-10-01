@@ -5,7 +5,6 @@ import Total_points
 from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
 # Fetch data
 driver_names = Total_points.get_driver_names(2025)
 race_sessions_data, sprint_sessions_data, race_keys, sprint_keys = Total_points.get_sessions(2025)
@@ -13,7 +12,7 @@ driver_points = {}
 Total_points.add_points(sprint_keys, 8, driver_points)
 Total_points.add_points(race_keys, 10, driver_points)
 current_points = driver_points
-current_date = datetime(2025, 9, 29).date()
+current_date = datetime.now().date()
 num_races = Total_points.count_remaining_races(Total_points.ALL_RACES, current_date)
 num_sprints = Total_points.count_remaining_sprints(Total_points.ALL_SPRINTS, current_date)
 drivers = sorted([1, 63, 55, 12, 30, 22, 4, 44, 16, 6, 5, 87, 23, 31, 14, 27, 18, 10, 43, 81])
@@ -174,8 +173,15 @@ def plot_graph():
     upper_quartile = {}
     median_points = {}
     for d in top_5:
+        # Calculate recent max points per race (last 7 races)
+        if len(driver_points_over_time[d]) >= 2:
+            start = max(1, len(driver_points_over_time[d]) - 7)
+            diffs = [driver_points_over_time[d][k] - driver_points_over_time[d][k-1] for k in range(start, len(driver_points_over_time[d]))]
+            recent_max = max(diffs) if diffs else 25
+        else:
+            recent_max = 25
         lower_quartile[d] = [current_points[d]] + [min(vals) for vals in avg_points_lists[d][1:]]
-        upper_quartile[d] = [current_points[d]] + [max(vals) for vals in avg_points_lists[d][1:]]
+        upper_quartile[d] = [current_points[d] + recent_max * i for i in range(num_races + 1)]
         median_points[d] = [sorted(vals)[49] for vals in avg_points_lists[d][1:]]  # median
     
     # Plot
