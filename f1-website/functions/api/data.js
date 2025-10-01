@@ -3,7 +3,7 @@ const CACHE_KEY = 'f1_data_cache';
 const CACHE_TIMESTAMP_KEY = 'f1_cache_timestamp';
 
 // New F1 Worker endpoint (update this URL after deploying your worker)
-const F1_WORKER_BASE_URL = 'https://f1-autocache.your-username.workers.dev'; // TODO: Replace with your actual worker URL
+const F1_WORKER_BASE_URL = 'https://f1-autocache.djsmanchanda.workers.dev'; // Updated with your actual worker URL
 // Fallback to original API if worker is unavailable
 const FALLBACK_API_URL = 'https://youtrition.djsmanchanda.com/api/f1-standings?format=json';
 

@@ -7,3 +7,5 @@ api_cache.json
 points_cache.json
 DEPLOYMENT_GUIDE.md
 IMPLEMENTATION_SUMMARY.md
+points_progression_table.csv
+points_progression_table.json
