@@ -1,26 +1,79 @@
-# F1 2025 Championship Simulator
+# F1 Data & Simulation Suite
 
-A web-based Formula 1 championship simulator that lets you predict race outcomes and see how they affect the championship standings.
+A comprehensive Formula 1 data suite featuring a production-ready caching Worker and web-based championship simulator.
 
-## Features
+## Projects
 
-- 🏎️ **Real-time Data**: Fetches actual F1 2025 race results from OpenF1 API
-- 💾 **Smart Caching**: Server-side caching that only refreshes when new races complete
-- 🎯 **Scenario Planning**: Set constraints like driver positions or relative finishing orders
-- 📊 **Monte Carlo Simulation**: Run 1000+ simulations to calculate championship probabilities
-- 🎨 **Clean UI**: Modern, responsive design optimized for all devices
-- ⚡ **Client-side Simulation**: All heavy computation happens in the browser
+### 🏎️ F1 AutoCache Worker (`f1-autocache/`)
+Production-ready Cloudflare Worker that provides real-time F1 championship data:
+- **Real-time Data**: Fetches from Jolpi/Ergast F1 API with hourly updates
+- **Smart Caching**: KV storage with 6-hour post-race intelligence
+- **Multiple Formats**: JSON and CSV endpoints for flexibility
+- **Auto-Discovery**: Dynamically detects new races and updates standings
+- **Cron Scheduling**: Automated updates every hour
+
+### 🎯 F1 Championship Simulator (`f1-website/`)
+Interactive web-based championship simulator:
+- **Scenario Planning**: Set constraints like driver positions or relative finishing orders
+- **Monte Carlo Simulation**: Run 1000+ simulations to calculate championship probabilities
+- **Clean UI**: Modern, responsive design optimized for all devices
+- **Client-side Simulation**: All heavy computation happens in the browser
 
 ## Tech Stack
 
+- **Workers**: Cloudflare Workers with ES modules
 - **Frontend**: Vanilla JavaScript (no frameworks needed)
 - **Backend**: Cloudflare Pages Functions (serverless)
-- **Caching**: Cloudflare KV (optional but recommended)
-- **APIs**: OpenF1 API, Ergast F1 API
+- **Caching**: Cloudflare KV storage
+- **APIs**: Jolpi/Ergast F1 API
+
+## Quick Start
+
+### F1 AutoCache Worker
+```bash
+# Deploy the Worker
+cd f1-autocache
+wrangler deploy
+
+# Create KV namespace (one-time setup)
+wrangler kv namespace create "F1_CACHE" --preview false
+
+# Update wrangler.toml with the namespace ID, then redeploy
+wrangler deploy
+```
+
+### F1 Website
+```bash
+# Deploy to Cloudflare Pages
+cd f1-website
+
+# Connect to GitHub via Cloudflare Dashboard
+# Or deploy directly:
+wrangler pages deploy public
+```
 
 ## Deployment
 
-### Deploy to Cloudflare Pages
+### F1 AutoCache Worker
+
+1. **Set up Worker**:
+   ```bash
+   cd f1-autocache
+   wrangler deploy
+   ```
+
+2. **Create KV Storage**:
+   ```bash
+   wrangler kv namespace create "F1_CACHE" --preview false
+   # Copy the namespace ID to wrangler.toml
+   wrangler deploy  # Redeploy with KV binding
+   ```
+
+3. **Verify Deployment**:
+   - JSON: `https://f1-autocache.yourworker.workers.dev/json`
+   - CSV: `https://f1-autocache.yourworker.workers.dev/csv`
+
+### F1 Website
 
 1. **Connect to GitHub**:
    - Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
@@ -30,26 +83,25 @@ A web-based Formula 1 championship simulator that lets you predict race outcomes
 2. **Build Settings**:
    - Framework preset: None
    - Build command: (leave empty)
-   - Build output directory: `public`
+   - Build output directory: `f1-website/public`
 
-3. **Optional: Set up KV for Caching**:
-   ```bash
-   # Create KV namespace
-   wrangler kv:namespace create "F1_CACHE"
-   
-   # Bind it in your Pages project settings
-   # Or uncomment the KV section in wrangler.toml
-   ```
-
-4. **Deploy**: Push to your main branch or click "Deploy" in Cloudflare
+3. **Deploy**: Push to your main branch or click "Deploy" in Cloudflare
 
 ### Local Development
 
+#### F1 AutoCache Worker
 ```bash
-# Install Wrangler CLI (Cloudflare's dev tool)
-npm install -g wrangler
+cd f1-autocache
+wrangler dev
 
-# Run local development server
+# Test locally at http://localhost:8787
+# JSON: http://localhost:8787/json
+# CSV: http://localhost:8787/csv
+```
+
+#### F1 Website
+```bash
+cd f1-website
 wrangler pages dev public
 
 # Access at http://localhost:8788
@@ -57,19 +109,24 @@ wrangler pages dev public
 
 ## How It Works
 
-### Data Caching Strategy
+### F1 AutoCache Worker
 
-The API function (`/api/data`) implements smart caching:
+The Worker implements intelligent F1 data caching:
 
-1. Checks if cached data exists
-2. Compares cached timestamp with race calendar
-3. Only fetches fresh data if a new race has occurred
-4. Returns cached data for all other requests
+1. **Dynamic Race Discovery**: Automatically detects new races from Jolpi/Ergast API
+2. **Smart Updates**: Runs hourly with 6-hour post-race intelligence for fresh data
+3. **Points Calculation**: Computes cumulative championship points (Sprint + Race)
+4. **Multi-format Output**: Serves data as JSON and CSV for different use cases
+5. **KV Persistence**: Stores processed data in Cloudflare KV for instant delivery
 
-This means:
-- ⚡ Lightning-fast load times for users
-- 💰 Minimal API calls (respects rate limits)
-- 🔄 Always up-to-date after races complete
+### F1 Website Data Strategy
+
+The website API (`f1-website/functions/api/data.js`) implements fallback protection:
+
+1. **Primary Source**: Uses the F1 AutoCache Worker for latest data
+2. **Fallback Protection**: Falls back to original API if Worker is unavailable
+3. **Data Transformation**: Converts Worker format to website-compatible format
+4. **Error Handling**: Graceful degradation ensures the site always works
 
 ### Simulation Algorithm
 
@@ -85,34 +142,55 @@ This means:
 
 ```
 .
-├── public/
-│   ├── index.html          # Main HTML file
-│   ├── styles.css          # All styling
-│   └── app.js              # Client-side logic & simulation
-├── functions/
-│   └── api/
-│       └── data.js         # Serverless API with caching
-├── wrangler.toml           # Cloudflare configuration
-└── README.md
+├── f1-autocache/                    # F1 Data Caching Worker
+│   ├── worker.mjs                   # Main Worker script
+│   ├── wrangler.toml               # Worker configuration
+│   └── README.md                   # Worker documentation
+├── f1-website/                     # F1 Championship Simulator
+│   ├── public/
+│   │   ├── index.html              # Main HTML file
+│   │   ├── styles.css              # All styling
+│   │   ├── app.js                  # Client-side logic & simulation
+│   │   └── loading.js              # Loading animations
+│   ├── functions/
+│   │   └── api/
+│   │       └── data.js             # API with Worker integration
+│   ├── wrangler.toml               # Pages configuration
+│   └── README.md                   # Website documentation
+├── testing/                        # Development & testing files
+└── README.md                       # This file
 ```
+
+## API Endpoints
+
+### F1 AutoCache Worker
+- **JSON**: `https://f1-autocache.yourworker.workers.dev/json`
+- **CSV**: `https://f1-autocache.yourworker.workers.dev/csv`
+- **Metadata**: `https://f1-autocache.yourworker.workers.dev/metadata`
+
+### F1 Website
+- **API**: `/api/data` (integrates with Worker + fallback protection)
+
+## Data Sources
+
+The F1 AutoCache Worker uses:
+- **Jolpi/Ergast F1 API**: Primary data source for race results and standings
 
 ## Future Enhancements
 
+### F1 AutoCache Worker
+- [ ] Constructor championship data
+- [ ] Driver/team metadata caching
+- [ ] Historical season comparisons
+- [ ] Additional output formats (XML, GraphQL)
+
+### F1 Website
 - [ ] Add driver/team profile images
 - [ ] Animated GIFs for likely winners
 - [ ] Historical comparison charts
 - [ ] Share simulation results via URL
 - [ ] Constructor championship simulation
 - [ ] Mobile app (PWA)
-
-## API Usage
-
-The app uses two public F1 APIs:
-
-- **OpenF1 API**: Race sessions and results
-- **Ergast API**: Driver information
-
-Both are free and don't require authentication.
 
 ## License
 
@@ -121,4 +199,4 @@ MIT License - feel free to use and modify!
 ## Credits
 
 Built for F1 fans by F1 fans 🏁
-Data provided by OpenF1 and Ergast APIs
+Data provided by Jolpi/Ergast F1 API

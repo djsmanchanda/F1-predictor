@@ -521,6 +521,36 @@ footer {
     margin-top: 40px;
 }
 
+.footer-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.coffee-btn {
+    background: linear-gradient(135deg, #FFDD44, #FF9900);
+    color: #2c1810;
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(255, 221, 68, 0.3);
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.coffee-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 221, 68, 0.4);
+    background: linear-gradient(135deg, #FFE55C, #FFB133);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     h1 {
@@ -541,5 +571,15 @@ footer {
     
     .btn {
         width: 100%;
+    }
+    
+    .footer-content {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .coffee-btn {
+        font-size: 0.85rem;
+        padding: 6px 14px;
     }
 }
