@@ -1,12 +1,10 @@
 /**
- * Test script for the F1 Worker API
+ * Test script for the F1 Worker API - CommonJS Version
  * Run this after deploying your worker to validate it's working correctly
  * 
- * Usage: node test-worker.js [WORKER_URL]
- * Example: node test-worker.js https://f1-autocache.your-username.workers.dev
+ * Usage: node test-worker-simple.js [WORKER_URL]
+ * Example: node test-worker-simple.js https://f1-autocache.your-username.workers.dev
  */
-
-import { fetch } from 'undici';
 
 const WORKER_URL = process.argv[2] || 'https://f1-autocache.your-username.workers.dev';
 const CURRENT_YEAR = new Date().getFullYear();
@@ -15,13 +13,14 @@ async function testEndpoint(url, expectedType = 'json') {
   console.log(`\n🧪 Testing: ${url}`);
   
   try {
+    const fetch = (await import('node-fetch')).default;
     const response = await fetch(url);
     const status = response.status;
     const headers = Object.fromEntries(response.headers);
     
     console.log(`   Status: ${status}`);
-    console.log(`   CORS: ${headers['access-control-allow-origin']}`);
-    console.log(`   Cache: ${headers['cache-control']}`);
+    console.log(`   CORS: ${headers['access-control-allow-origin'] || 'Not set'}`);
+    console.log(`   Cache: ${headers['cache-control'] || 'Not set'}`);
     
     if (status === 200) {
       const data = expectedType === 'csv' 
@@ -70,9 +69,5 @@ async function testWorker() {
   console.log(`\n🚀 Worker testing complete!`);
 }
 
-// Check if this is being run directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  testWorker().catch(console.error);
-}
-
-export { testWorker };
+// Run the test
+testWorker().catch(console.error);
