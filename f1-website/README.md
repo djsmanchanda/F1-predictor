@@ -30,7 +30,6 @@ f1-website/
 ## 🔗 Data Sources
 
 - **Primary**: F1 Worker API (`https://f1-autocache.djsmanchanda.workers.dev`)
-- **Fallback**: Original API (`https://youtrition.djsmanchanda.com/api/f1-standings`)
 - **Source**: Jolpi/Ergast F1 API (official data mirror)
 
 ## 🛠 Development

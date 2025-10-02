@@ -5,7 +5,7 @@ const CACHE_TIMESTAMP_KEY = 'f1_cache_timestamp';
 // New F1 Worker endpoint (update this URL after deploying your worker)
 const F1_WORKER_BASE_URL = 'https://f1-autocache.djsmanchanda.workers.dev'; // Updated with your actual worker URL
 // Fallback to original API if worker is unavailable
-const FALLBACK_API_URL = 'https://youtrition.djsmanchanda.com/api/f1-standings?format=json';
+const FALLBACK_API_URL = 'https://youtrition.djsmanchanda.com/api/f1-standings?format=json'; // hardcoded data till Azerbaijan GP 2025   
 
 // F1 Calendar 2025
 const ALL_RACES = [
@@ -56,18 +56,9 @@ function shouldRefreshCache(currentDate, cachedTimestamp) {
   const lastCacheDate = new Date(cachedTimestamp);
   const today = new Date(currentDate);
   
-  // In development, use shorter cache duration
-  const isDev = !process.env.CF_PAGES;
-  if (isDev) {
-    const timeDiff = today.getTime() - lastCacheDate.getTime();
-    return timeDiff > MEMORY_CACHE_DURATION;
-  }
-  
-  // In production, check if a race has happened since last cache
-  const completedRaces = ALL_RACES.filter(race => new Date(race.date) <= lastCacheDate);
-  const newCompletedRaces = ALL_RACES.filter(race => new Date(race.date) <= today && new Date(race.date) > lastCacheDate);
-  
-  return newCompletedRaces.length > 0;
+  // Use shorter cache duration for development
+  const timeDiff = today.getTime() - lastCacheDate.getTime();
+  return timeDiff > MEMORY_CACHE_DURATION;
 }
 
 async function fetchFromWorker(year = new Date().getUTCFullYear()) {
@@ -228,10 +219,9 @@ export async function onRequest(context) {
   
   try {
     const currentDate = new Date().toISOString();
-    const isDev = !env || !env.CF_PAGES;
     
-    // Check memory cache first (dev only)
-    if (isDev && memoryCache && memoryCacheTimestamp) {
+    // Check memory cache first (local development)
+    if (memoryCache && memoryCacheTimestamp) {
       const needsRefresh = shouldRefreshCache(currentDate, memoryCacheTimestamp);
       if (!needsRefresh) {
         return new Response(JSON.stringify(memoryCache), {
@@ -250,12 +240,16 @@ export async function onRequest(context) {
     let cachedTimestamp = null;
     
     if (env && env.F1_CACHE) {
-      const [kvData, kvTimestamp] = await Promise.all([
-        env.F1_CACHE.get(CACHE_KEY, { type: 'json' }),
-        env.F1_CACHE.get(CACHE_TIMESTAMP_KEY)
-      ]);
-      cachedData = kvData;
-      cachedTimestamp = kvTimestamp;
+      try {
+        const [kvData, kvTimestamp] = await Promise.all([
+          env.F1_CACHE.get(CACHE_KEY, { type: 'json' }),
+          env.F1_CACHE.get(CACHE_TIMESTAMP_KEY)
+        ]);
+        cachedData = kvData;
+        cachedTimestamp = kvTimestamp;
+      } catch (kvError) {
+        console.log('KV access failed, proceeding without cache:', kvError.message);
+      }
     }
     
     // Check if we need to refresh
@@ -279,27 +273,30 @@ export async function onRequest(context) {
       cacheTimestamp: currentDate
     };
     
-    // Cache the data
-    if (isDev) {
-      // Memory cache for development
-      memoryCache = responseData;
-      memoryCacheTimestamp = currentDate;
-    }
+    // Cache the data in memory (for local dev)
+    memoryCache = responseData;
+    memoryCacheTimestamp = currentDate;
     
+    // Cache in KV for production (don't await to speed up response)
     if (env && env.F1_CACHE) {
-      // KV cache for production (don't await to speed up response)
-      env.F1_CACHE.put(CACHE_KEY, JSON.stringify(responseData));
-      env.F1_CACHE.put(CACHE_TIMESTAMP_KEY, currentDate);
+      try {
+        env.F1_CACHE.put(CACHE_KEY, JSON.stringify(responseData));
+        env.F1_CACHE.put(CACHE_TIMESTAMP_KEY, currentDate);
+      } catch (kvError) {
+        console.log('KV storage failed:', kvError.message);
+      }
     }
     
-        return new Response(JSON.stringify(responseData), {
-          headers: {
-            ...corsHeaders,
-            'X-Cache-Status': 'MISS',
-            'X-Cache-Date': currentDate,
-            'X-Data-Source': freshData.source || 'unknown'
-          }
-        });  } catch (error) {
+    return new Response(JSON.stringify(responseData), {
+      headers: {
+        ...corsHeaders,
+        'X-Cache-Status': 'MISS',
+        'X-Cache-Date': currentDate,
+        'X-Data-Source': freshData.source || 'unknown'
+      }
+    });
+    
+  } catch (error) {
     console.error('API Error:', error);
     return new Response(JSON.stringify({ 
       error: 'Failed to fetch data', 

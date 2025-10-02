@@ -6,8 +6,8 @@
     <title>F1 2025 Championship Simulator</title>
     
     <!-- Performance optimizations -->
-    <link rel="preconnect" href="https://youtrition.djsmanchanda.com">
-    <link rel="dns-prefetch" href="https://youtrition.djsmanchanda.com">
+    <link rel="preconnect" href="https://f1-autocache.djsmanchanda.workers.dev">
+    <link rel="dns-prefetch" href="https://f1-autocache.djsmanchanda.workers.dev">
     
     <link rel="stylesheet" href="styles.css">
     <script src="loading.js"></script>
@@ -66,13 +66,26 @@
 
             <!-- Simulation Controls -->
             <section class="section">
+                <h2>🎲 Simulate Championship Scenarios (1000 simulations)</h2>
                 <div class="simulation-controls">
-                    <button id="run-simulation" class="btn btn-primary">
-                        🚀 Run Simulation (1000 iterations)
-                    </button>
-                    <button id="clear-scenarios" class="btn btn-secondary">
-                        🗑️ Clear All Scenarios
-                    </button>
+                    <div class="simulation-option">
+                        <button id="run-simulation" class="btn btn-primary">
+                            🎯 Standard Simulation
+                        </button>
+                        <p class="simulation-description">random positions</p>
+                    </div>
+                    <div class="simulation-option">
+                        <button id="run-realistic-simulation" class="btn btn-accent">
+                            🏎️ Realistic Simulation
+                        </button>
+                        <p class="simulation-description">top drivers more likely to get podiums</p>
+                    </div>
+                    <div class="simulation-option">
+                        <button id="clear-scenarios" class="btn btn-secondary">
+                            🗑️ Clear All Scenarios
+                        </button>
+                        <p class="simulation-description">reset all race scenarios</p>
+                    </div>
                 </div>
             </section>
 
@@ -105,10 +118,15 @@
 
     <footer>
         <div class="footer-content">
-            <p>Made by <a href="https://djsmanchanda.com" target="_blank" rel="noopener noreferrer">djsmanchanda</a> | Built for F1 fans 🏎️</p>
+            <div class="footer-text">
+                <span>Made with ❤️ by <a href="https://djsmanchanda.com" target="_blank" rel="noopener noreferrer" class="author-link">Divjot</a></span>
+            </div>
             <a href="https://buymeacoffee.com/djsmanchanda" target="_blank" rel="noopener noreferrer" class="coffee-btn">
-                ☕ Buy me a coffee
+                ☕ Support this project
             </a>
+            <div class="footer-tagline">
+                <span>Built for F1 fans 🏎️</span>
+            </div>
         </div>
     </footer>
 

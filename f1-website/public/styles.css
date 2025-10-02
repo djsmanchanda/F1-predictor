@@ -278,12 +278,28 @@ h1 {
     color: var(--secondary-color);
 }
 
-/* Buttons */
+/* Simulation Controls */
 .simulation-controls {
     display: flex;
-    gap: 15px;
+    gap: 30px;
     justify-content: center;
     flex-wrap: wrap;
+}
+
+.simulation-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 200px;
+}
+
+.simulation-description {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0;
+    text-align: center;
+    font-style: italic;
 }
 
 .btn {
@@ -398,7 +414,84 @@ h1 {
 
 .victory-conditions {
     display: grid;
-    gap: 20px;
+    gap: 25px;
+}
+
+.condition-target {
+    background: linear-gradient(135deg, rgba(40, 167, 69, 0.1), rgba(34, 197, 94, 0.1));
+    border-left-color: var(--success);
+}
+
+.condition-target h4 {
+    color: var(--success);
+}
+
+.priority-critical {
+    background: rgba(225, 6, 0, 0.05);
+    border-left: 3px solid var(--primary-color);
+    padding: 12px 15px;
+    margin: 8px 0;
+    border-radius: 6px;
+}
+
+.priority-high {
+    background: rgba(255, 135, 0, 0.05);
+    border-left: 3px solid #ff8700;
+    padding: 10px 15px;
+    margin: 6px 0;
+    border-radius: 6px;
+}
+
+.priority-medium {
+    background: rgba(255, 193, 7, 0.05);
+    border-left: 3px solid #ffc107;
+    padding: 8px 15px;
+    margin: 4px 0;
+    border-radius: 6px;
+}
+
+.rivals-section h4 {
+    font-size: 1.4rem;
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.rival-strategy {
+    background: rgba(0, 0, 0, 0.02);
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    border: 1px solid var(--border);
+}
+
+.rival-strategy p {
+    margin: 5px 0;
+    font-size: 0.95rem;
+}
+
+.required-finishes {
+    margin-top: 15px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.required-finishes strong {
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 10px;
+}
+
+.required-finishes ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.required-finishes li {
+    margin: 5px 0;
+    color: var(--text-secondary);
 }
 
 .condition-card {
@@ -470,6 +563,12 @@ h1 {
     font-weight: 600;
 }
 
+.driver-number {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 0.9rem;
+}
+
 .result-percentage {
     font-size: 1.5rem;
     font-weight: 700;
@@ -515,39 +614,82 @@ h1 {
 /* Footer */
 footer {
     text-align: center;
-    padding: 30px 20px;
+    padding: 40px 20px;
     color: var(--text-secondary);
     border-top: 1px solid var(--border);
-    margin-top: 40px;
+    margin-top: 50px;
+    background: linear-gradient(135deg, var(--surface), var(--background));
 }
 
 .footer-content {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 20px;
+    gap: 30px;
     flex-wrap: wrap;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.footer-text {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.footer-text span {
+    font-size: 0.95rem;
+}
+
+.footer-text a.author-link {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.footer-text a.author-link:hover {
+    color: #0056b3;
+}
+
+.footer-tagline {
+    display: flex;
+    align-items: center;
+}
+
+.footer-tagline span {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+
+.footer-separator {
+    color: var(--border);
+    font-weight: bold;
+    font-size: 1.2rem;
 }
 
 .coffee-btn {
     background: linear-gradient(135deg, #FFDD44, #FF9900);
     color: #2c1810;
     text-decoration: none;
-    padding: 8px 16px;
-    border-radius: 20px;
+    padding: 10px 20px;
+    border-radius: 25px;
     font-weight: 600;
     font-size: 0.9rem;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 8px rgba(255, 221, 68, 0.3);
+    box-shadow: 0 4px 12px rgba(255, 221, 68, 0.3);
     border: none;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    white-space: nowrap;
 }
 
 .coffee-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(255, 221, 68, 0.4);
+    box-shadow: 0 6px 16px rgba(255, 221, 68, 0.4);
     background: linear-gradient(135deg, #FFE55C, #FFB133);
 }
 
@@ -556,30 +698,36 @@ footer {
     h1 {
         font-size: 2rem;
     }
-    
+
     .scenario-row {
         grid-template-columns: 1fr;
     }
-    
+
     .progress-stats {
         grid-template-columns: 1fr;
     }
-    
+
     .simulation-controls {
         flex-direction: column;
     }
-    
+
     .btn {
         width: 100%;
     }
-    
+
     .footer-content {
         flex-direction: column;
-        gap: 15px;
+        gap: 20px;
+        padding: 0 10px;
     }
-    
+
+    .footer-text,
+    .footer-tagline {
+        text-align: center;
+    }
+
     .coffee-btn {
         font-size: 0.85rem;
-        padding: 6px 14px;
+        padding: 8px 16px;
     }
 }
