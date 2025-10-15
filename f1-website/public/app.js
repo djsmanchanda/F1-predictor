@@ -274,19 +274,9 @@ function buildShareURL(simulationType = 'std') {
 // Bit layout:
 // header: version(3) simType(1: 0=std,1=real) eventCount(6: 0..32)
 // per event: eventType(1:0=race,1=sprint) round(5: 0-based) scenarioCount(4: 0..8)
-// per scenario: type(1: 0=position,1=above) driver1(5: idx 0..23) value(5: position-1 or driver2 idx)
-
-function getDriverIndexMapping() {
-    // Deterministic mapping for up to 24 drivers
-    const sorted = [...drivers].sort((a, b) => a - b).slice(0, 24);
-    const toIdx = new Map();
-    sorted.forEach((id, i) => toIdx.set(id, i));
-    return { list: sorted, toIdx };
-}
+// per scenario: type(1: 0=position,1=above) driver1(7: direct driver number 1..127) value(7: pos-1 for position, or driver2 number 1..127)
 
 function encodeCompressedScenarios(simulationType = 'std') {
-    const { list: driverList, toIdx } = getDriverIndexMapping();
-    if (driverList.length === 0) return '';
     const collected = collectScenarios();
     // Build event blocks with non-empty scenarios
     const blocks = [];
@@ -298,18 +288,18 @@ function encodeCompressedScenarios(simulationType = 'std') {
         const remIdx = isRace ? i : (i - remainingRaces.length);
         const round = getEventRoundFromRemaining(isRace ? 'race' : 'sprint', remIdx);
         if (!round) continue;
-        // Convert scenarios using driver index mapping
+        // Convert scenarios using direct driver numbers (1..127)
         const converted = [];
         for (const s of list.slice(0, 8)) {
-            const d1Idx = toIdx.get(s.driver1);
-            if (d1Idx == null || d1Idx > 23) continue;
+            const d1 = parseInt(s.driver1, 10);
+            if (!Number.isFinite(d1) || d1 < 1 || d1 > 127) continue;
             if (s.type === 'position') {
                 const pos = Math.max(1, Math.min(20, parseInt(s.value, 10) || 1));
-                converted.push({ t: 0, d1: d1Idx, v: pos - 1 });
+                converted.push({ t: 0, d1, v: (pos - 1) & 127 });
             } else if (s.type === 'above') {
-                const d2Idx = toIdx.get(parseInt(s.value, 10));
-                if (d2Idx == null || d2Idx > 23) continue;
-                converted.push({ t: 1, d1: d1Idx, v: d2Idx });
+                const d2 = parseInt(s.value, 10);
+                if (!Number.isFinite(d2) || d2 < 1 || d2 > 127) continue;
+                converted.push({ t: 1, d1, v: d2 & 127 });
             }
         }
         if (converted.length) {
@@ -322,7 +312,7 @@ function encodeCompressedScenarios(simulationType = 'std') {
     const bits = [];
     const write = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push(((val >> i) & 1) ? 1 : 0); };
     // header
-    const version = 0; // 3 bits
+    const version = 0; // 3 bits - v0: direct driver numbers (7 bits each)
     write(version, 3);
     write(simulationType === 'real' ? 1 : 0, 1);
     write(Math.min(blocks.length, 32), 6);
@@ -333,8 +323,8 @@ function encodeCompressedScenarios(simulationType = 'std') {
         write(Math.min(b.scenarios.length, 8), 4);
         for (const sc of b.scenarios) {
             write(sc.t, 1);
-            write(sc.d1 & 31, 5);
-            write(sc.v & 31, 5);
+            write(sc.d1 & 127, 7);
+            write(sc.v & 127, 7);
         }
     }
     // to base64-url
@@ -350,8 +340,6 @@ function encodeCompressedScenarios(simulationType = 'std') {
 }
 
 function applyCompressedFromURL(bstr) {
-    const { list: driverList } = getDriverIndexMapping();
-    if (driverList.length === 0) return { shouldRun: false };
     // decode base64-url to bits
     const bits = [];
     for (const ch of bstr) {
@@ -361,6 +349,7 @@ function applyCompressedFromURL(bstr) {
     }
     let p = 0;
     const read = (n) => {
+        if (p + n > bits.length) return null;
         let v = 0;
         for (let i = 0; i < n; i++) { v = (v << 1) | (bits[p++] || 0); }
         return v;
@@ -368,35 +357,45 @@ function applyCompressedFromURL(bstr) {
     const version = read(3); // currently unused
     const simBit = read(1);
     const eventCount = read(6);
-    if (eventCount > 32) return { shouldRun: false };
+    if (version === null || simBit === null || eventCount === null || eventCount > 32) {
+        showToast('Invalid or outdated link');
+        return { shouldRun: false };
+    }
     for (let e = 0; e < eventCount; e++) {
         const et = read(1);
         const round0 = read(5);
         const scCount = read(4);
+        if (et === null || round0 === null || scCount === null || scCount > 8) {
+            showToast('Invalid or outdated link');
+            return { shouldRun: false };
+        }
         const type = et === 0 ? 'race' : 'sprint';
         const round = round0 + 1;
         const remIdx = getRemainingIndexFromRound(type, round);
         if (remIdx == null) {
             // skip scenarios for this completed/invalid event
-            p += scCount * (1 + 5 + 5);
+            p += scCount * (1 + 7 + 7);
             continue;
         }
         const scenarioIndex = type === 'race' ? remIdx : remainingRaces.length + remIdx;
         for (let i = 0; i < scCount; i++) {
             const t = read(1);
-            const d1Idx = read(5);
-            const v = read(5);
-            const driver1 = driverList[d1Idx];
-            if (driver1 == null) continue;
+            const d1 = read(7);
+            const v = read(7);
+            if (t === null || d1 === null || v === null) {
+                showToast('Invalid or outdated link');
+                return { shouldRun: false };
+            }
+            if (d1 < 1 || d1 > 127) continue; // skip invalid driver
             if (t === 0) {
-                // position
-                const pos = Math.min(20, (v + 1));
-                addScenarioToTab(scenarioIndex, { type: 'position', driver1, value: String(pos) });
+                // position: v = pos-1
+                const pos = Math.min(20, Math.max(1, v + 1));
+                addScenarioToTab(scenarioIndex, { type: 'position', driver1: d1, value: String(pos) });
             } else {
-                // above
-                const driver2 = driverList[v];
-                if (driver2 == null) continue;
-                addScenarioToTab(scenarioIndex, { type: 'above', driver1, value: String(driver2) });
+                // above: v = driver2 number
+                const driver2 = v;
+                if (driver2 < 1 || driver2 > 127) continue;
+                addScenarioToTab(scenarioIndex, { type: 'above', driver1: d1, value: String(driver2) });
             }
         }
     }
@@ -547,20 +546,35 @@ function attachEventListeners() {
     // Share scenarios button
     const shareBtn = document.getElementById('share-scenarios');
     if (shareBtn) {
-        shareBtn.addEventListener('click', async () => {
+        shareBtn.addEventListener('click', async (ev) => {
+            const button = shareBtn;
+            const originalText = button.textContent;
             try {
-                // Use the last run simulation type if available
                 const simType = window.__lastSimType === 'real' ? 'real' : 'std';
                 const shareUrl = buildShareURL(simType);
+                // Ctrl/Cmd + click opens in a new tab instead of copying
+                if (ev && (ev.ctrlKey || ev.metaKey)) {
+                    window.open(shareUrl, '_blank', 'noopener');
+                    return;
+                }
+                button.disabled = true;
+                button.textContent = '⏳ Creating link...';
+                console.log('Share URL generated:', shareUrl.length, 'characters');
                 await copyTextToClipboard(shareUrl);
-                showToast('🔗 Link copied to clipboard');
+                button.textContent = '✅ Copied!';
+                showToast('🔗 Link copied to clipboard!');
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.disabled = false;
+                }, 2000);
             } catch (err) {
                 console.error('Share failed:', err);
-                // Fallback: show prompt with the URL
+                button.textContent = originalText;
+                button.disabled = false;
                 const simType = window.__lastSimType === 'real' ? 'real' : 'std';
                 const fallbackUrl = buildShareURL(simType);
                 window.prompt('Copy this URL:', fallbackUrl);
-                showToast('Link ready — copy it from the prompt');
+                showToast('📋 Copy the URL from the prompt');
             }
         });
     }
@@ -1439,6 +1453,21 @@ function getConditionIcon(condition) {
     if (condition.includes('sprint')) return '⚡';
     if (condition.includes('average')) return '📊';
     return '⚠️';
+}
+
+// Approximate finishing position from points per event
+function getPositionFromPoints(points) {
+    if (points >= 25) return 1;
+    if (points >= 18) return 2;
+    if (points >= 15) return 3;
+    if (points >= 12) return 4;
+    if (points >= 10) return 5;
+    if (points >= 8) return 6;
+    if (points >= 6) return 7;
+    if (points >= 4) return 8;
+    if (points >= 2) return 9;
+    if (points >= 1) return 10;
+    return 15;
 }
 
 // Start the app
