@@ -946,8 +946,8 @@ function displayResults(results) {
     
     resultsSection.style.display = 'block';
     
-    // Show winner animation if someone has >50% chance
-    if (results[0].percentage > 50) {
+    // Always show winner banner for the current top candidate
+    if (results && results.length > 0) {
         showWinnerAnimation(results[0].driver);
     }
     
@@ -959,7 +959,9 @@ function showWinnerAnimation(driverNum) {
     const animDiv = document.getElementById('winner-animation');
     const name = driverNames[driverNum] || `Driver #${driverNum}`;
     document.getElementById('winner-text').textContent = `🏆 ${name} is the likely champion! 🏆`;
-    animDiv.style.display = 'block';
+    if (animDiv) {
+        animDiv.style.display = 'block';
+    }
 }
 
 // Path to Victory Calculator
