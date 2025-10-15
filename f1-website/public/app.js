@@ -122,6 +122,7 @@ function renderStandings() {
         return `
             <div class="${cardClass}">
                 <span class="driver-position">${index + 1}</span>
+                <img class="driver-number-badge" src="driver-numbers/${driverId}.png" alt="#${driverId} badge" loading="lazy" onerror="this.style.display='none'" />
                 <span class="driver-name">${name}</span>
                 <span class="driver-points">${points} pts</span>
             </div>
