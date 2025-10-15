@@ -1,3 +1,4 @@
+//public/app.js
 // Global state
 let appData = null;
 let scenarios = {};
@@ -10,6 +11,7 @@ let remainingSprints = [];
 // Constants
 const RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1].concat(Array(10).fill(0)); // 20 positions
 const SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1].concat(Array(12).fill(0)); // 20 positions, but only top 8 score
+const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 // Initialize app
 async function init() {
@@ -18,9 +20,19 @@ async function init() {
         await loadData();
         processData();
         renderUI();
+        // Apply scenarios from URL (if present) before wiring events
+        const autoRun = applyScenariosFromURL();
         attachEventListeners();
         showLoading(false);
         document.getElementById('app').style.display = 'block';
+        // If URL had scenarios, auto-run the requested simulation mode
+        if (autoRun && autoRun.shouldRun) {
+            if (autoRun.sim === 'real') {
+                runRealisticSimulation();
+            } else {
+                runSimulation();
+            }
+        }
     } catch (error) {
         console.error('Initialization error:', error);
         showError();
@@ -128,6 +140,267 @@ function renderStandings() {
             </div>
         `;
     }).join('');
+}
+
+// ===== Shareable URL: encode/decode scenarios by round =====
+
+function getEventRoundFromRemaining(type, remainingIndex) {
+    if (type === 'race') {
+        const raceObj = remainingRaces[remainingIndex];
+        const allIdx = appData.allRaces.indexOf(raceObj);
+        return allIdx >= 0 ? (allIdx + 1) : null; // 1-based round
+    } else {
+        const sprintObj = remainingSprints[remainingIndex];
+        const allIdx = appData.allSprints.indexOf(sprintObj);
+        return allIdx >= 0 ? (allIdx + 1) : null; // 1-based sprint round
+    }
+}
+
+function getRemainingIndexFromRound(type, round) {
+    if (type === 'race') {
+        const allIdx = round - 1; // 0-based
+        const raceObj = appData.allRaces[allIdx];
+        if (!raceObj) return null;
+        const remIdx = remainingRaces.indexOf(raceObj);
+        return remIdx >= 0 ? remIdx : null; // null if race already completed
+    } else {
+        const allIdx = round - 1;
+        const sprintObj = appData.allSprints[allIdx];
+        if (!sprintObj) return null;
+        const remIdx = remainingSprints.indexOf(sprintObj);
+        return remIdx >= 0 ? remIdx : null;
+    }
+}
+
+// Build a compact, human-readable scenarios string
+// Example: r3:p81-1,a44-1.s2:a16-11
+function buildScenariosParam() {
+    const collected = collectScenarios();
+    const parts = [];
+    const total = remainingRaces.length + remainingSprints.length;
+    for (let i = 0; i < total; i++) {
+        const list = collected[i] || [];
+        if (!list.length) continue;
+        const isRace = i < remainingRaces.length;
+        const typeChar = isRace ? 'r' : 's';
+        const remIdx = isRace ? i : (i - remainingRaces.length);
+        const round = getEventRoundFromRemaining(isRace ? 'race' : 'sprint', remIdx);
+        if (!round) continue;
+        const constraints = list.map(s => {
+            const d = s.driver1;
+            if (s.type === 'position') {
+                return `p${d}-${s.value}`; // pDRIVER-POS
+            } else if (s.type === 'above') {
+                return `a${d}-${s.value}`; // aA-B means A above B
+            }
+            return '';
+        }).filter(Boolean).join(',');
+        if (constraints) parts.push(`${typeChar}${round}:${constraints}`);
+    }
+    return parts.join('.');
+}
+
+// Parse and apply scenarios from URL if present
+function applyScenariosFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    // First try compressed form
+    const b = params.get('b');
+    if (b) {
+        const result = applyCompressedFromURL(b);
+        return result;
+    }
+    const sc = params.get('sc');
+    if (!sc) return { shouldRun: false };
+
+    const blocks = sc.split('.').filter(Boolean);
+    for (const block of blocks) {
+        // Match like r3:..., s2:...
+        const m = block.match(/^([rs])(\d+):(.+)$/);
+        if (!m) continue;
+        const typeChar = m[1];
+        const round = parseInt(m[2], 10);
+        const constraintsStr = m[3];
+        const type = typeChar === 'r' ? 'race' : 'sprint';
+        const remIdx = getRemainingIndexFromRound(type, round);
+        if (remIdx == null) {
+            // Event already completed or invalid; skip silently to keep link stable over time
+            continue;
+        }
+        const scenarioIndex = type === 'race' ? remIdx : remainingRaces.length + remIdx;
+
+        // Parse constraints: pDRIVER-POS, aA-B
+        const tokens = constraintsStr.split(',').filter(Boolean);
+        for (const tok of tokens) {
+            const kind = tok[0];
+            const rest = tok.slice(1);
+            if (!rest.includes('-')) continue;
+            const [a, b] = rest.split('-');
+            const d1 = parseInt(a, 10);
+            const val = parseInt(b, 10);
+            if (!Number.isFinite(d1) || !Number.isFinite(val)) continue;
+            if (kind === 'p') {
+                addScenarioToTab(scenarioIndex, { type: 'position', driver1: d1, value: String(val) });
+            } else if (kind === 'a') {
+                addScenarioToTab(scenarioIndex, { type: 'above', driver1: d1, value: String(val) });
+            }
+        }
+    }
+
+    // Optional: simulation type
+    const sim = params.get('sim'); // 'std' or 'real'
+    return { shouldRun: true, sim: sim === 'real' ? 'real' : 'std' };
+}
+
+// Public helper to copy current scenarios into a shareable URL
+function buildShareURL(simulationType = 'std') {
+    // Prefer compressed link for brevity
+    const compressed = encodeCompressedScenarios(simulationType);
+    const url = new URL(window.location.href);
+    // Clear legacy params for a shorter URL
+    url.searchParams.delete('sc');
+    url.searchParams.delete('sim');
+    if (compressed && compressed.length > 0) {
+        url.searchParams.set('b', compressed);
+    } else {
+        // Fallback to legacy format if nothing to compress
+        const sc = buildScenariosParam();
+        if (sc && sc.length > 0) url.searchParams.set('sc', sc);
+        url.searchParams.set('sim', simulationType === 'real' ? 'real' : 'std');
+    }
+    return url.toString();
+}
+
+// ===== Compressed URL encoding/decoding =====
+// Bit layout:
+// header: version(3) simType(1: 0=std,1=real) eventCount(6: 0..32)
+// per event: eventType(1:0=race,1=sprint) round(5: 0-based) scenarioCount(4: 0..8)
+// per scenario: type(1: 0=position,1=above) driver1(5: idx 0..23) value(5: position-1 or driver2 idx)
+
+function getDriverIndexMapping() {
+    // Deterministic mapping for up to 24 drivers
+    const sorted = [...drivers].sort((a, b) => a - b).slice(0, 24);
+    const toIdx = new Map();
+    sorted.forEach((id, i) => toIdx.set(id, i));
+    return { list: sorted, toIdx };
+}
+
+function encodeCompressedScenarios(simulationType = 'std') {
+    const { list: driverList, toIdx } = getDriverIndexMapping();
+    if (driverList.length === 0) return '';
+    const collected = collectScenarios();
+    // Build event blocks with non-empty scenarios
+    const blocks = [];
+    const total = remainingRaces.length + remainingSprints.length;
+    for (let i = 0; i < total; i++) {
+        const list = collected[i] || [];
+        if (!list.length) continue;
+        const isRace = i < remainingRaces.length;
+        const remIdx = isRace ? i : (i - remainingRaces.length);
+        const round = getEventRoundFromRemaining(isRace ? 'race' : 'sprint', remIdx);
+        if (!round) continue;
+        // Convert scenarios using driver index mapping
+        const converted = [];
+        for (const s of list.slice(0, 8)) {
+            const d1Idx = toIdx.get(s.driver1);
+            if (d1Idx == null || d1Idx > 23) continue;
+            if (s.type === 'position') {
+                const pos = Math.max(1, Math.min(20, parseInt(s.value, 10) || 1));
+                converted.push({ t: 0, d1: d1Idx, v: pos - 1 });
+            } else if (s.type === 'above') {
+                const d2Idx = toIdx.get(parseInt(s.value, 10));
+                if (d2Idx == null || d2Idx > 23) continue;
+                converted.push({ t: 1, d1: d1Idx, v: d2Idx });
+            }
+        }
+        if (converted.length) {
+            blocks.push({ et: isRace ? 0 : 1, round0: (round - 1) & 31, scenarios: converted });
+        }
+        if (blocks.length >= 32) break; // cap
+    }
+
+    // Bit writer
+    const bits = [];
+    const write = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push(((val >> i) & 1) ? 1 : 0); };
+    // header
+    const version = 0; // 3 bits
+    write(version, 3);
+    write(simulationType === 'real' ? 1 : 0, 1);
+    write(Math.min(blocks.length, 32), 6);
+    // events
+    for (const b of blocks) {
+        write(b.et, 1);
+        write(b.round0 & 31, 5);
+        write(Math.min(b.scenarios.length, 8), 4);
+        for (const sc of b.scenarios) {
+            write(sc.t, 1);
+            write(sc.d1 & 31, 5);
+            write(sc.v & 31, 5);
+        }
+    }
+    // to base64-url
+    // pad to 6-bit boundary
+    while (bits.length % 6 !== 0) bits.push(0);
+    let out = '';
+    for (let i = 0; i < bits.length; i += 6) {
+        let v = 0;
+        for (let k = 0; k < 6; k++) v = (v << 1) | bits[i + k];
+        out += B64_CHARS[v];
+    }
+    return out;
+}
+
+function applyCompressedFromURL(bstr) {
+    const { list: driverList } = getDriverIndexMapping();
+    if (driverList.length === 0) return { shouldRun: false };
+    // decode base64-url to bits
+    const bits = [];
+    for (const ch of bstr) {
+        const v = B64_CHARS.indexOf(ch);
+        if (v < 0) continue;
+        for (let i = 5; i >= 0; i--) bits.push(((v >> i) & 1) ? 1 : 0);
+    }
+    let p = 0;
+    const read = (n) => {
+        let v = 0;
+        for (let i = 0; i < n; i++) { v = (v << 1) | (bits[p++] || 0); }
+        return v;
+    };
+    const version = read(3); // currently unused
+    const simBit = read(1);
+    const eventCount = read(6);
+    if (eventCount > 32) return { shouldRun: false };
+    for (let e = 0; e < eventCount; e++) {
+        const et = read(1);
+        const round0 = read(5);
+        const scCount = read(4);
+        const type = et === 0 ? 'race' : 'sprint';
+        const round = round0 + 1;
+        const remIdx = getRemainingIndexFromRound(type, round);
+        if (remIdx == null) {
+            // skip scenarios for this completed/invalid event
+            p += scCount * (1 + 5 + 5);
+            continue;
+        }
+        const scenarioIndex = type === 'race' ? remIdx : remainingRaces.length + remIdx;
+        for (let i = 0; i < scCount; i++) {
+            const t = read(1);
+            const d1Idx = read(5);
+            const v = read(5);
+            const driver1 = driverList[d1Idx];
+            if (driver1 == null) continue;
+            if (t === 0) {
+                // position
+                const pos = Math.min(20, (v + 1));
+                addScenarioToTab(scenarioIndex, { type: 'position', driver1, value: String(pos) });
+            } else {
+                // above
+                const driver2 = driverList[v];
+                if (driver2 == null) continue;
+                addScenarioToTab(scenarioIndex, { type: 'above', driver1, value: String(driver2) });
+            }
+        }
+    }
+    return { shouldRun: true, sim: simBit === 1 ? 'real' : 'std' };
 }
 
 function renderProgress() {
@@ -270,6 +543,27 @@ function attachEventListeners() {
     
     // Clear scenarios button
     document.getElementById('clear-scenarios').addEventListener('click', clearAllScenarios);
+    
+    // Share scenarios button
+    const shareBtn = document.getElementById('share-scenarios');
+    if (shareBtn) {
+        shareBtn.addEventListener('click', async () => {
+            try {
+                // Use the last run simulation type if available
+                const simType = window.__lastSimType === 'real' ? 'real' : 'std';
+                const shareUrl = buildShareURL(simType);
+                await copyTextToClipboard(shareUrl);
+                showToast('🔗 Link copied to clipboard');
+            } catch (err) {
+                console.error('Share failed:', err);
+                // Fallback: show prompt with the URL
+                const simType = window.__lastSimType === 'real' ? 'real' : 'std';
+                const fallbackUrl = buildShareURL(simType);
+                window.prompt('Copy this URL:', fallbackUrl);
+                showToast('Link ready — copy it from the prompt');
+            }
+        });
+    }
     
     // Path to Victory button
     document.getElementById('calculate-victory').addEventListener('click', calculatePathToVictory);
@@ -459,6 +753,7 @@ function runSimulation() {
         } finally {
             button.disabled = false;
             button.textContent = '🎯 Standard Simulation';
+            window.__lastSimType = 'std';
         }
     }, 100);
 }
@@ -479,6 +774,7 @@ function runRealisticSimulation() {
         } finally {
             button.disabled = false;
             button.textContent = '🏎️ Realistic Simulation';
+            window.__lastSimType = 'real';
         }
     }, 100);
 }
@@ -539,8 +835,8 @@ function simulate(scenarioData, iterations, simulationType = 'standard') {
 }
 
 function generateOrder(driverList, scenarioList, top5Bias, simulationType = 'standard') {
-    // Try up to 2000 times to satisfy all constraints
-    for (let attempt = 0; attempt < 1000; attempt++) {
+    // Try up to 10000 times to satisfy all constraints
+    for (let attempt = 0; attempt < 10000; attempt++) {
         // Start with random order
         let order = [...driverList].sort(() => Math.random() - 0.5);
 
@@ -1147,3 +1443,34 @@ function getConditionIcon(condition) {
 
 // Start the app
 init();
+
+// ===== Utilities: toast + clipboard =====
+function showToast(message) {
+    const el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = message;
+    el.style.display = 'block';
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => {
+        el.style.display = 'none';
+    }, 2200);
+}
+
+async function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+    }
+    // Fallback for non-secure contexts
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+        document.execCommand('copy');
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}

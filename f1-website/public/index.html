@@ -1,3 +1,4 @@
+<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -76,7 +77,7 @@
             <!-- Simulation Controls -->
             <section class="section">
                 <h2>Simulate your Scenarios</h2>
-                <p class="help-text">1000 simulations</p>
+                <p class="help-text">10000 simulations</p>
                 <div class="simulation-controls">
                     <div class="simulation-option">
                         <button id="run-simulation" class="btn btn-primary">
@@ -96,6 +97,9 @@
                         </button>
                         <p class="simulation-description">reset all race scenarios</p>
                     </div>
+                    <div class="simulation-option">
+                        
+                    </div>
                 </div>
             </section>
 
@@ -106,6 +110,9 @@
                 <div id="winner-animation" class="winner-animation" style="display: none;">
                     <div class="confetti"></div>
                     <h3 id="winner-text"></h3>
+                </div>
+                <div class="share-actions" style="margin-top: 16px; display: flex; justify-content: center;">
+                    <button id="share-scenarios" class="btn btn-secondary">🔗 Share Scenarios</button>
                 </div>
             </section>
             
@@ -141,5 +148,6 @@
     </footer>
 
     <script src="app.js"></script>
+    <div id="toast" class="toast" style="display: none;"></div>
 </body>
 </html>
