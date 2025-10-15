@@ -31,25 +31,34 @@
         <div id="app" style="display: none;">
             <!-- Current Standings -->
             <section class="section">
-                <h2>📊 Current Championship Standings</h2>
+                <h2>📊 Current Driver Standings</h2>
                 <div id="standings" class="standings-grid"></div>
             </section>
 
             <!-- Race Progress -->
             <section class="section">
+                <h2>Season Statistics</h2>
                 <div class="race-progress">
                     <div class="progress-stats">
-                        <div class="stat-card">
+                        <div class="stat-card stat-total">
+                            <span class="stat-label">Total Races in Season</span>
+                            <span class="stat-value" id="total-races">0</span>
+                        </div>
+                        <div class="stat-card stat-completed">
                             <span class="stat-label">Races Completed</span>
                             <span class="stat-value" id="races-completed">0</span>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card stat-remaining">
                             <span class="stat-label">Races Remaining</span>
                             <span class="stat-value" id="races-remaining">0</span>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card stat-sprints">
                             <span class="stat-label">Sprints Remaining</span>
                             <span class="stat-value" id="sprints-remaining">0</span>
+                        </div>
+                        <div class="stat-card stat-max">
+                            <span class="stat-label">Max Points Possible</span>
+                            <span class="stat-value" id="max-points">0</span>
                         </div>
                     </div>
                 </div>
@@ -66,7 +75,8 @@
 
             <!-- Simulation Controls -->
             <section class="section">
-                <h2>🎲 Simulate Championship Scenarios (1000 simulations)</h2>
+                <h2>Simulate your Scenarios</h2>
+                <p class="help-text">1000 simulations</p>
                 <div class="simulation-controls">
                     <div class="simulation-option">
                         <button id="run-simulation" class="btn btn-primary">

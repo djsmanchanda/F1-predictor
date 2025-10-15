@@ -101,14 +101,26 @@ function renderUI() {
 
 function renderStandings() {
     const standingsDiv = document.getElementById('standings');
-    const sortedDrivers = Object.entries(currentPoints)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 10);
+    const sortedAll = Object.entries(currentPoints)
+        .sort(([, a], [, b]) => b - a);
+    const sortedDrivers = sortedAll.slice(0, 10);
+
+    // Determine leader and mathematical contenders
+    const leaderPoints = sortedAll.length ? sortedAll[0][1] : 0;
+    const leaderDriver = sortedAll.length ? parseInt(sortedAll[0][0]) : null;
+    const maxRacePoints = remainingRaces.length * 25;
+    const maxSprintPoints = remainingSprints.length * 8;
+    const maxFastestLaps = remainingRaces.length * 1;
+    const maxPossiblePoints = maxRacePoints + maxSprintPoints + maxFastestLaps;
     
     standingsDiv.innerHTML = sortedDrivers.map(([driverNum, points], index) => {
         const name = driverNames[driverNum] || `Driver #${driverNum}`;
+        const driverId = parseInt(driverNum);
+        const isLeader = driverId === leaderDriver;
+        const canStillWin = (points + maxPossiblePoints) >= leaderPoints;
+        const cardClass = isLeader ? 'driver-card leader' : (canStillWin ? 'driver-card contender' : 'driver-card');
         return `
-            <div class="driver-card">
+            <div class="${cardClass}">
                 <span class="driver-position">${index + 1}</span>
                 <span class="driver-name">${name}</span>
                 <span class="driver-points">${points} pts</span>
@@ -122,6 +134,17 @@ function renderProgress() {
     document.getElementById('races-completed').textContent = completedRaces;
     document.getElementById('races-remaining').textContent = remainingRaces.length;
     document.getElementById('sprints-remaining').textContent = remainingSprints.length;
+
+    // Calculate maximum possible points
+    const maxRacePoints = remainingRaces.length * 25;
+    const maxSprintPoints = remainingSprints.length * 8;
+    const maxFastestLaps = remainingRaces.length * 1;
+    const maxPossiblePoints = maxRacePoints + maxSprintPoints + maxFastestLaps;
+    document.getElementById('max-points').textContent = maxPossiblePoints;
+
+    // Calculate total races in season
+    const totalRaces = appData.allRaces.length;
+    document.getElementById('total-races').textContent = totalRaces;
 }
 
 function renderScenarioTabs() {
@@ -157,11 +180,16 @@ function renderScenarioTabs() {
 function createScenarioPanel(tabId, scenarioIndex, title, isSprint) {
     return `
         <div class="scenario-panel ${tabId === 'race-0' ? 'active' : ''}" id="${tabId}">
-            <h3>${title}</h3>
+            <div class="scenario-panel-header">
+                <h3>${title}</h3>
+                <div class="scenario-actions">
+                    <button class="btn btn-copy" onclick="copyScenariosToAll(${scenarioIndex})">📋 Copy to All Races</button>
+                    <button class="btn btn-add" onclick="addScenarioRow(${scenarioIndex})">+ Add Scenario</button>
+                </div>
+            </div>
             <div class="scenario-list" id="scenarios-${scenarioIndex}">
                 <!-- Scenario rows will be added here -->
             </div>
-            <button class="btn-add" onclick="addScenarioRow(${scenarioIndex})">+ Add Scenario</button>
         </div>
     `;
 }
@@ -182,7 +210,7 @@ function addScenarioRow(scenarioIndex) {
         </select>
         <select class="driver1">
             <option value="">Select Driver</option>
-            ${drivers.map(d => `<option value="${d}">${driverNames[d] || `Driver #${d}`}</option>`).join('')}
+            ${drivers.map(d => `<option value="${d}">#${d} — ${driverNames[d] || `Driver #${d}`}</option>`).join('')}
         </select>
         <select class="driver2-or-position" disabled>
             <option value="">Select Option</option>
@@ -206,7 +234,7 @@ function updateScenarioOptions(scenarioIndex, rowIndex) {
             Array.from({length: 20}, (_, i) => `<option value="${i+1}">Position ${i+1}</option>`).join('');
     } else if (typeSelect.value === 'above') {
         valueSelect.innerHTML = '<option value="">Select Driver</option>' +
-            drivers.map(d => `<option value="${d}">${driverNames[d] || `Driver #${d}`}</option>`).join('');
+            drivers.map(d => `<option value="${d}">#${d} — ${driverNames[d] || `Driver #${d}`}</option>`).join('');
     } else {
         valueSelect.innerHTML = '<option value="">Select Option</option>';
         valueSelect.disabled = true;
@@ -253,6 +281,140 @@ function clearAllScenarios() {
             container.innerHTML = '';
         }
         scenarios[i] = [];
+    }
+}
+
+function copyScenariosToAll(sourceIndex = null) {
+    let scenarioIndex = sourceIndex;
+
+    if (scenarioIndex === null) {
+        // Fallback: determine from currently active tab
+        const activeTab = document.querySelector('.tab.active');
+        if (!activeTab) {
+            alert('Please select a race tab first!');
+            return;
+        }
+
+        const activeTabId = activeTab.dataset.tab;
+        scenarioIndex = getScenarioIndexFromTabId(activeTabId);
+    }
+
+    if (scenarioIndex === null) {
+        alert('Unable to determine active scenario. Please try again.');
+        return;
+    }
+    
+    // Get scenarios from the active tab
+    const sourceScenarios = collectScenariosFromTab(scenarioIndex);
+    
+    if (sourceScenarios.length === 0) {
+        alert('No scenarios to copy! Please add scenarios to the current race first.');
+        return;
+    }
+    
+    // Copy to all other races/sprints
+    const totalScenarios = remainingRaces.length + remainingSprints.length;
+    for (let i = 0; i < totalScenarios; i++) {
+        if (i !== scenarioIndex) {
+            // Clear existing scenarios for this race
+            const container = document.getElementById(`scenarios-${i}`);
+            if (container) {
+                container.innerHTML = '';
+            }
+            scenarios[i] = [];
+            
+            // Add the copied scenarios
+            sourceScenarios.forEach(scenario => {
+                addScenarioToTab(i, scenario);
+            });
+        }
+    }
+    
+    // Show success message
+    const raceName = getRaceNameFromIndex(scenarioIndex);
+    alert(`✅ Scenarios from ${raceName} copied to all other races!`);
+}
+
+function getScenarioIndexFromTabId(tabId) {
+    // Extract scenario index from tab ID
+    if (tabId.startsWith('race-')) {
+        return parseInt(tabId.replace('race-', ''));
+    } else if (tabId.startsWith('sprint-')) {
+        const sprintIndex = parseInt(tabId.replace('sprint-', ''));
+        return remainingRaces.length + sprintIndex;
+    }
+    return null;
+}
+
+function collectScenariosFromTab(scenarioIndex) {
+    const container = document.getElementById(`scenarios-${scenarioIndex}`);
+    if (!container) return [];
+    
+    const rows = container.querySelectorAll('.scenario-row');
+    const collectedScenarios = [];
+    
+    rows.forEach(row => {
+        const type = row.querySelector('.scenario-type').value;
+        const driver1 = row.querySelector('.driver1').value;
+        const value = row.querySelector('.driver2-or-position').value;
+        
+        if (type && driver1 && value) {
+            collectedScenarios.push({ type, driver1: parseInt(driver1), value });
+        }
+    });
+    
+    return collectedScenarios;
+}
+
+function addScenarioToTab(scenarioIndex, scenario) {
+    const container = document.getElementById(`scenarios-${scenarioIndex}`);
+    if (!container) return;
+    
+    const rowIndex = scenarios[scenarioIndex].length;
+    
+    const row = document.createElement('div');
+    row.className = 'scenario-row';
+    row.id = `scenario-${scenarioIndex}-${rowIndex}`;
+    
+    row.innerHTML = `
+        <select class="scenario-type" onchange="updateScenarioOptions(${scenarioIndex}, ${rowIndex})">
+            <option value="">Select Type</option>
+            <option value="position" ${scenario.type === 'position' ? 'selected' : ''}>Set Position</option>
+            <option value="above" ${scenario.type === 'above' ? 'selected' : ''}>A Above B</option>
+        </select>
+        <select class="driver1">
+            <option value="">Select Driver</option>
+            ${drivers.map(d => `<option value="${d}" ${d == scenario.driver1 ? 'selected' : ''}>#${d} — ${driverNames[d] || `Driver #${d}`}</option>`).join('')}
+        </select>
+        <select class="driver2-or-position" disabled>
+            <option value="">Select Option</option>
+        </select>
+        <button class="btn-remove" onclick="removeScenarioRow(${scenarioIndex}, ${rowIndex})">✕</button>
+    `;
+    
+    container.appendChild(row);
+    scenarios[scenarioIndex].push({ type: scenario.type, driver1: scenario.driver1, value: scenario.value });
+    
+    // Update the value select based on the scenario type
+    updateScenarioOptions(scenarioIndex, rowIndex);
+    
+    // Set the value
+    setTimeout(() => {
+        const valueSelect = row.querySelector('.driver2-or-position');
+        if (scenario.type === 'position') {
+            valueSelect.value = scenario.value;
+        } else if (scenario.type === 'above') {
+            valueSelect.value = scenario.value;
+        }
+    }, 10);
+}
+
+function getRaceNameFromIndex(scenarioIndex) {
+    if (scenarioIndex < remainingRaces.length) {
+        return remainingRaces[scenarioIndex].country;
+    } else {
+        const sprintIndex = scenarioIndex - remainingRaces.length;
+        return `Sprint: ${remainingSprints[sprintIndex].country}`;
     }
 }
 
@@ -499,7 +661,7 @@ function populateVictoryDrivers() {
     select.innerHTML = '<option value="">Select a driver...</option>' +
         sortedDrivers.map(([driverNum, points]) => {
             const name = driverNames[driverNum] || `Driver #${driverNum}`;
-            return `<option value="${driverNum}">${name} (${points} pts)</option>`;
+            return `<option value="${driverNum}">#${driverNum} — ${name} (${points} pts)</option>`;
         }).join('');
 }
 

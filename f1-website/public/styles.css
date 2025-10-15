@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     --primary-color: #e10600;
     --secondary-color: #15151e;
     --accent-color: #ff8700;
@@ -22,53 +22,67 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: var(--background);
     color: var(--text-primary);
-    line-height: 1.6;
+    line-height: 1.55;
     min-height: 100vh;
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 18px;
 }
 
 header {
     text-align: center;
-    padding: 40px 20px;
+    padding: 32px 20px;
     background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     border-radius: 16px;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
     box-shadow: 0 8px 32px rgba(225, 6, 0, 0.3);
 }
 
 h1 {
-    font-size: 2.5rem;
-    margin-bottom: 10px;
+    font-size: 2.2rem;
+    margin-bottom: 8px;
     font-weight: 700;
 }
 
 .subtitle {
     color: var(--text-secondary);
-    font-size: 1.1rem;
+    font-size: 1rem;
+}
+
+.main-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.95fr) minmax(0, 1.45fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.layout-left,
+.layout-right {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
 }
 
 .section {
     background: var(--surface);
     border-radius: 12px;
-    padding: 30px;
-    margin-bottom: 30px;
+    padding: 24px;
     border: 1px solid var(--border);
 }
 
 .section h2 {
-    font-size: 1.8rem;
-    margin-bottom: 20px;
+    font-size: 1.6rem;
+    margin-bottom: 16px;
     color: var(--primary-color);
 }
 
 .help-text {
     color: var(--text-secondary);
-    margin-bottom: 20px;
+    margin-bottom: 16px;
+    font-size: 0.95rem;
 }
 
 /* Loading */
@@ -104,7 +118,7 @@ h1 {
 /* Standings */
 .standings-grid {
     display: grid;
-    gap: 12px;
+    gap: 8px;
 }
 
 .driver-card {
@@ -112,10 +126,22 @@ h1 {
     align-items: center;
     gap: 15px;
     background: var(--surface-light);
-    padding: 15px 20px;
+    padding: 8px 18px;
     border-radius: 8px;
     border-left: 4px solid var(--primary-color);
     transition: transform 0.2s, box-shadow 0.2s;
+}
+
+/* Highlight leader and mathematical contenders */
+.driver-card.leader {
+    background: linear-gradient(135deg, rgba(225, 6, 0, 0.18), rgba(255, 135, 0, 0.12));
+    border-left-color: var(--accent-color);
+    box-shadow: 0 4px 14px rgba(255, 135, 0, 0.25);
+}
+
+.driver-card.contender {
+    background: linear-gradient(135deg, rgba(0, 212, 72, 0.08), rgba(0, 212, 72, 0.04));
+    border-left-color: var(--success);
 }
 
 .driver-card:hover {
@@ -124,7 +150,7 @@ h1 {
 }
 
 .driver-position {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: var(--accent-color);
     min-width: 40px;
@@ -132,12 +158,12 @@ h1 {
 
 .driver-name {
     flex: 1;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 600;
 }
 
 .driver-points {
-    font-size: 1.3rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: var(--success);
 }
@@ -149,28 +175,34 @@ h1 {
 
 .progress-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12x;
 }
 
 .stat-card {
     background: var(--surface-light);
-    padding: 20px;
+    padding: 12px;
     border-radius: 8px;
     text-align: center;
     border: 1px solid var(--border);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(225, 6, 0, 0.2);
 }
 
 .stat-label {
     display: block;
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     margin-bottom: 8px;
 }
 
 .stat-value {
     display: block;
-    font-size: 2rem;
+    font-size: 1.8rem;
     font-weight: 700;
     color: var(--primary-color);
 }
@@ -186,7 +218,7 @@ h1 {
 }
 
 .tab {
-    padding: 12px 20px;
+    padding: 10px 16px;
     background: var(--surface-light);
     border: 1px solid var(--border);
     border-radius: 8px 8px 0 0;
@@ -216,6 +248,44 @@ h1 {
     display: block;
 }
 
+.scenario-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.scenario-panel-header h3 {
+    margin: 0;
+    font-size: 1.4rem;
+}
+
+.scenario-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.scenario-actions .btn {
+    padding: 10px 18px;
+    font-size: 0.95rem;
+}
+
+.btn-copy {
+    background: var(--surface-light);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-copy:hover {
+    background: var(--border);
+}
+
 .scenario-list {
     display: grid;
     gap: 15px;
@@ -238,7 +308,7 @@ h1 {
     color: var(--text-primary);
     border: 1px solid var(--border);
     border-radius: 6px;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     cursor: pointer;
 }
 
@@ -278,6 +348,10 @@ h1 {
     color: var(--secondary-color);
 }
 
+.scenario-actions .btn-add {
+    margin-top: 0;
+}
+
 /* Simulation Controls */
 .simulation-controls {
     display: flex;
@@ -303,8 +377,8 @@ h1 {
 }
 
 .btn {
-    padding: 16px 32px;
-    font-size: 1.1rem;
+    padding: 14px 28px;
+    font-size: 1.05rem;
     font-weight: 600;
     border: none;
     border-radius: 8px;
@@ -559,7 +633,7 @@ h1 {
 
 .result-driver {
     flex: 1;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     font-weight: 600;
 }
 
@@ -570,7 +644,7 @@ h1 {
 }
 
 .result-percentage {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: var(--success);
 }
@@ -691,6 +765,90 @@ footer {
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(255, 221, 68, 0.4);
     background: linear-gradient(135deg, #FFE55C, #FFB133);
+}
+
+/* 2-column layout for large screens */
+/*
+   Notes:
+   - Switch to 2 columns only on wider screens so single column is used more often.
+   - Constrain the grid width (tracks + gap) and center it to avoid the left/right margin imbalance.
+*/
+@media (min-width: 1400px) {
+    #app {
+        display: grid !important;
+        /* 65/35-ish split */
+        grid-template-columns: 5fr 2fr;
+        gap: 24px;
+        align-items: start;
+        margin: 0 auto; /* keep centered within container */
+    }
+
+    /* Allow sections to shrink within their grid columns to avoid overflow */
+    #app > .section {
+        min-width: 0;
+    }
+
+    /* Standings - left column */
+    #app > .section:nth-child(1) {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    /* Race Progress - right column */
+    #app > .section:nth-child(2) {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    /* Stack stats vertically on large screens and reorder with Total first */
+    .progress-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    /* Reorder: Total (1), Completed (2), Remaining (3), Sprints (4), Max Points (5) */
+    .stat-total { order: 1; }
+    .stat-completed { order: 2; }
+    .stat-remaining { order: 3; }
+    .stat-sprints { order: 4; }
+    .stat-max { order: 5; }
+
+    /* Scenarios - left column */
+    #app > .section:nth-child(3) {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    /* Simulation Controls - right column */
+    #app > .section:nth-child(4) {
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    /* Results - full width */
+    #results-section {
+        grid-column: 1 / -1;
+        grid-row: 3;
+    }
+
+    /* Path to Victory - full width */
+    #app > .section:nth-child(6) {
+        grid-column: 1 / -1;
+        grid-row: 4;
+    }
+    /* Stack simulation options vertically to fit the narrower right column */
+    .simulation-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .simulation-option {
+        width: 100%;
+        min-width: 0; /* override 200px min to prevent overflow */
+    }
+    .simulation-controls .btn {
+        width: 100%;
+    }
 }
 
 /* Responsive */
