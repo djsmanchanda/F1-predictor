@@ -549,18 +549,41 @@ function attachEventListeners() {
         shareBtn.addEventListener('click', async (ev) => {
             const button = shareBtn;
             const originalText = button.textContent;
+            const simType = window.__lastSimType === 'real' ? 'real' : 'std';
+            const longUrl = buildShareURL(simType);
+            const createShort = async () => {
+                try {
+                    const res = await fetch('/api/shorten', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: longUrl })
+                    });
+                    if (!res.ok) throw new Error(`shorten failed: ${res.status}`);
+                    const data = await res.json();
+                    return data?.shortUrl || longUrl;
+                } catch (e) {
+                    console.warn('Shorten failed, using long URL:', e.message);
+                    return longUrl;
+                }
+            };
+
             try {
-                const simType = window.__lastSimType === 'real' ? 'real' : 'std';
-                const shareUrl = buildShareURL(simType);
-                // Ctrl/Cmd + click opens in a new tab instead of copying
+                // Ctrl/Cmd + click: open in new tab (prefer short URL)
                 if (ev && (ev.ctrlKey || ev.metaKey)) {
-                    window.open(shareUrl, '_blank', 'noopener');
+                    button.disabled = true;
+                    button.textContent = '⏳ Creating link...';
+                    const urlToOpen = await createShort();
+                    window.open(urlToOpen, '_blank', 'noopener');
+                    button.textContent = originalText;
+                    button.disabled = false;
                     return;
                 }
+
                 button.disabled = true;
                 button.textContent = '⏳ Creating link...';
-                console.log('Share URL generated:', shareUrl.length, 'characters');
-                await copyTextToClipboard(shareUrl);
+                console.log('Share URL (pre-short):', longUrl.length, 'chars');
+                const urlToCopy = await createShort();
+                await copyTextToClipboard(urlToCopy);
                 button.textContent = '✅ Copied!';
                 showToast('🔗 Link copied to clipboard!');
                 setTimeout(() => {
@@ -571,9 +594,7 @@ function attachEventListeners() {
                 console.error('Share failed:', err);
                 button.textContent = originalText;
                 button.disabled = false;
-                const simType = window.__lastSimType === 'real' ? 'real' : 'std';
-                const fallbackUrl = buildShareURL(simType);
-                window.prompt('Copy this URL:', fallbackUrl);
+                window.prompt('Copy this URL:', longUrl);
                 showToast('📋 Copy the URL from the prompt');
             }
         });
