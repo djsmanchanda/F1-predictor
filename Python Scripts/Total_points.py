@@ -44,11 +44,29 @@ def save_points_cache():
         pass  # Silently fail if can't save
 
 def cached_get(url):
+    """Simple cached GET with basic resilience.
+    Avoid caching transient error objects and always return parsed JSON when possible.
+    """
+    # Return cached value if present
     if url in api_cache:
         return api_cache[url]
+
+    # Fetch fresh
     session = requests.Session()
-    response = session.get(url)
-    data = response.json()
+    try:
+        response = session.get(url, timeout=15)
+        # Raise for non-2xx so we can handle uniformly
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        # On hard failure, do not cache; surface a minimal diagnostic structure
+        return {"error": True, "detail": str(e)}
+
+    # If the API returns a dict with an error/message, don't cache it to avoid poisoning future runs
+    if isinstance(data, dict) and any(k in data for k in ("error", "message", "detail")):
+        return data
+
+    # Cache only likely-good payloads
     api_cache[url] = data
     save_cache()  # Save after fetching new data
     return data
@@ -138,10 +156,44 @@ def print_all_races_and_sprints():
         print(f"{i}. {country} Sprint - {date}")
 
 def session_result(session_key, n=10):
+    """Fetch session results and return a list of result dicts.
+    The OpenF1 API may return an error dict (rate limit, not found, etc.).
+    This function normalizes the output to a list and avoids crashes.
+    """
     url = f"https://api.openf1.org/v1/session_result?session_key={session_key}&position<={n}"
-    session_results = cached_get(url)
-    session_results.sort(key=lambda x: int(x['position']))
-    return session_results  # Return full dicts to access 'points'
+    raw = cached_get(url)
+
+    # Normalize to list
+    results = []
+    if isinstance(raw, list):
+        results = raw
+    elif isinstance(raw, dict):
+        # Attempt to extract common list containers; otherwise treat as no data
+        for key in ("results", "data", "items"):
+            val = raw.get(key)
+            if isinstance(val, list):
+                results = val
+                break
+        else:
+            # If we previously cached a bad structure for this URL, purge it once
+            if url in api_cache:
+                try:
+                    api_cache.pop(url, None)
+                    save_cache()
+                except Exception:
+                    pass
+            # Return empty list to allow callers to proceed gracefully
+            return []
+    else:
+        return []
+
+    # Sort safely by numeric position if available
+    try:
+        results.sort(key=lambda x: int(x.get('position', 9999)))
+    except Exception:
+        # If any item is malformed, fall back to unsorted
+        pass
+    return results  # Return full dicts to access 'points'
 
 def print_session_results(session_keys, session_type, n):
     for key, country in session_keys:

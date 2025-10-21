@@ -44,6 +44,7 @@ DRIVERS = [
     ("Oliver", "Bearman", "haas", "87"),
     ("Pierre", "Gasly", "alpine", "10"),
     ("Franco", "Colapinto", "alpine", "43"),
+    ("Jack", "Doohan", "alpine", "7"),
 ]
 
 # ---- URL templates ----

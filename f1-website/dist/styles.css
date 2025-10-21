@@ -1,0 +1,914 @@
+﻿:root {
+    --primary-color: #e10600;
+    --secondary-color: #111198;
+    --accent-color: #ff8700;
+    --background: #0d0d0d;
+    --surface: #1a1a1a;
+    --surface-light: #2a2a2a;
+    --text-primary: #ffffff;
+    --text-secondary: #b0b0b0;
+    --success: #00d448;
+    --warning: #ffd000;
+    --border: #333333;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--background);
+    color: var(--text-primary);
+    line-height: 1.55;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 18px;
+}
+
+header {
+    text-align: center;
+    padding: 32px 20px;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    border-radius: 16px;
+    margin-bottom: 24px;
+    box-shadow: 0 8px 32px rgba(225, 6, 0, 0.3);
+}
+
+h1 {
+    font-size: 2.2rem;
+    margin-bottom: 8px;
+    font-weight: 700;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 1rem;
+}
+
+.main-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.95fr) minmax(0, 1.45fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.layout-left,
+.layout-right {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.section {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid var(--border);
+}
+
+.section h2 {
+    font-size: 1.6rem;
+    margin-bottom: 16px;
+    color: var(--primary-color);
+}
+
+.help-text {
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    font-size: 0.95rem;
+}
+
+/* Loading */
+.loading {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid var(--border);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Error */
+.error {
+    background: rgba(225, 6, 0, 0.1);
+    border: 2px solid var(--primary-color);
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    color: var(--primary-color);
+}
+
+/* Standings */
+.standings-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.driver-card {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: var(--surface-light);
+    padding: 8px 18px;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.driver-number-badge {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    flex: 0 0 auto;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+}
+
+/* Highlight leader and mathematical contenders */
+.driver-card.leader {
+    background: linear-gradient(135deg, rgba(225, 6, 0, 0.18), rgba(255, 135, 0, 0.12));
+    border-left-color: var(--accent-color);
+    box-shadow: 0 4px 14px rgba(255, 135, 0, 0.25);
+}
+
+.driver-card.contender {
+    background: linear-gradient(135deg, rgba(0, 212, 72, 0.08), rgba(0, 212, 72, 0.04));
+    border-left-color: var(--success);
+}
+
+.driver-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(225, 6, 0, 0.2);
+}
+
+.driver-position {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    min-width: 40px;
+}
+
+.driver-name {
+    flex: 1;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.driver-points {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--success);
+}
+
+/* Race Progress */
+.race-progress {
+    margin: 20px 0;
+}
+
+.progress-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px; 
+}
+
+.stat-card {
+    background: var(--surface-light);
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid var(--border);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(225, 6, 0, 0.2);
+}
+
+.stat-label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border);
+}
+
+.tab {
+    padding: 10px 16px;
+    background: var(--surface-light);
+    border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.tab:hover {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.tab.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+/* Scenario Panels */
+.scenario-panel {
+    display: none;
+}
+
+.scenario-panel.active {
+    display: block;
+}
+
+.scenario-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.scenario-panel-header h3 {
+    margin: 0;
+    font-size: 1.4rem;
+}
+
+.scenario-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.scenario-actions .btn {
+    padding: 10px 18px;
+    font-size: 0.95rem;
+}
+
+.btn-copy {
+    background: var(--surface-light);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-copy:hover {
+    background: var(--border);
+}
+
+.scenario-list {
+    display: grid;
+    gap: 15px;
+}
+
+.scenario-row {
+    display: grid;
+    grid-template-columns: 180px 1fr 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 15px;
+    background: var(--surface-light);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.scenario-row select {
+    padding: 10px;
+    background: var(--background);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.scenario-row select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.btn-remove {
+    padding: 8px 12px;
+    background: rgba(225, 6, 0, 0.2);
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-remove:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+.btn-add {
+    margin-top: 15px;
+    padding: 10px 20px;
+    background: var(--surface-light);
+    color: var(--success);
+    border: 1px solid var(--success);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-add:hover {
+    background: var(--success);
+    color: var(--secondary-color);
+}
+
+.scenario-actions .btn-add {
+    margin-top: 0;
+}
+
+/* Simulation Controls */
+.simulation-controls {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.simulation-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 200px;
+}
+
+.simulation-description {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0;
+    text-align: center;
+    font-style: italic;
+}
+
+.btn {
+    padding: 14px 28px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+    box-shadow: 0 4px 12px rgba(225, 6, 0, 0.3);
+}
+
+.btn-primary:hover {
+    background: #c00500;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(225, 6, 0, 0.4);
+}
+
+.btn-secondary {
+    background: var(--surface-light);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--border);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Victory Calculator */
+.victory-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.victory-select {
+    flex: 1;
+    min-width: 250px;
+    padding: 12px 16px;
+    background: var(--surface-light);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.victory-select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.btn-accent {
+    background: var(--accent-color);
+    color: var(--secondary-color);
+    box-shadow: 0 4px 12px rgba(255, 135, 0, 0.3);
+}
+
+.btn-accent:hover {
+    background: #ff9d1a;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 135, 0, 0.4);
+}
+
+.victory-results {
+    background: var(--surface-light);
+    border-radius: 8px;
+    padding: 25px;
+    border: 2px solid var(--accent-color);
+}
+
+.victory-header {
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.victory-header h3 {
+    font-size: 1.8rem;
+    color: var(--accent-color);
+    margin-bottom: 10px;
+}
+
+.victory-summary {
+    background: rgba(255, 135, 0, 0.1);
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 25px;
+}
+
+.victory-summary p {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    margin: 8px 0;
+}
+
+.victory-summary strong {
+    color: var(--text-primary);
+}
+
+.victory-conditions {
+    display: grid;
+    gap: 25px;
+}
+
+.condition-target {
+    background: linear-gradient(135deg, rgba(40, 167, 69, 0.1), rgba(34, 197, 94, 0.1));
+    border-left-color: var(--success);
+}
+
+.condition-target h4 {
+    color: var(--success);
+}
+
+.priority-critical {
+    background: rgba(225, 6, 0, 0.05);
+    border-left: 3px solid var(--primary-color);
+    padding: 12px 15px;
+    margin: 8px 0;
+    border-radius: 6px;
+}
+
+.priority-high {
+    background: rgba(255, 135, 0, 0.05);
+    border-left: 3px solid #ff8700;
+    padding: 10px 15px;
+    margin: 6px 0;
+    border-radius: 6px;
+}
+
+.priority-medium {
+    background: rgba(255, 193, 7, 0.05);
+    border-left: 3px solid #ffc107;
+    padding: 8px 15px;
+    margin: 4px 0;
+    border-radius: 6px;
+}
+
+.rivals-section h4 {
+    font-size: 1.4rem;
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.rival-strategy {
+    background: rgba(0, 0, 0, 0.02);
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    border: 1px solid var(--border);
+}
+
+.rival-strategy p {
+    margin: 5px 0;
+    font-size: 0.95rem;
+}
+
+.required-finishes {
+    margin-top: 15px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.required-finishes strong {
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 10px;
+}
+
+.required-finishes ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.required-finishes li {
+    margin: 5px 0;
+    color: var(--text-secondary);
+}
+
+.condition-card {
+    background: var(--background);
+    border-radius: 8px;
+    padding: 20px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.condition-card h4 {
+    font-size: 1.3rem;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.condition-list {
+    list-style: none;
+    padding: 0;
+}
+
+.condition-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.condition-list li:last-child {
+    border-bottom: none;
+}
+
+.condition-icon {
+    font-size: 1.2rem;
+}
+
+.condition-impossible {
+    background: rgba(225, 6, 0, 0.1);
+    border-left-color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+}
+
+.condition-impossible h4 {
+    color: var(--primary-color);
+}
+
+/* Results */
+.results {
+    display: grid;
+    gap: 15px;
+}
+
+.result-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+    background: var(--surface-light);
+    border-radius: 8px;
+    border-left: 4px solid var(--accent-color);
+}
+
+.result-driver {
+    flex: 1;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.driver-number {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 0.9rem;
+}
+
+.result-percentage {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--success);
+}
+
+.result-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--background);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.result-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+    transition: width 1s ease-out;
+}
+
+/* Winner Animation */
+.winner-animation {
+    text-align: center;
+    padding: 40px;
+    margin-top: 30px;
+    background: linear-gradient(135deg, rgba(225, 6, 0, 0.2), rgba(255, 135, 0, 0.2));
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+}
+
+.winner-animation h3 {
+    font-size: 2rem;
+    color: var(--accent-color);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border);
+    margin-top: 50px;
+    background: linear-gradient(135deg, var(--surface), var(--background));
+}
+
+.footer-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+    flex-wrap: wrap;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.footer-text {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.footer-text span {
+    font-size: 0.95rem;
+}
+
+.footer-text a.author-link {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.footer-text a.author-link:hover {
+    color: #0056b3;
+}
+
+.footer-tagline {
+    display: flex;
+    align-items: center;
+}
+
+.footer-tagline span {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+
+.footer-separator {
+    color: var(--border);
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.coffee-btn {
+    background: linear-gradient(135deg, #FFDD44, #FF9900);
+    color: #2c1810;
+    text-decoration: none;
+    padding: 10px 20px;
+    border-radius: 25px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(255, 221, 68, 0.3);
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.coffee-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 221, 68, 0.4);
+    background: linear-gradient(135deg, #FFE55C, #FFB133);
+}
+
+/* Toast */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: var(--surface-light);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 12px 16px;
+    border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    z-index: 9999;
+}
+
+/* 2-column layout for large screens */
+/*
+   Notes:
+   - Switch to 2 columns only on wider screens so single column is used more often.
+   - Constrain the grid width (tracks + gap) and center it to avoid the left/right margin imbalance.
+*/
+@media (min-width: 1400px) {
+    #app {
+        display: grid !important;
+        /* 65/35-ish split */
+        grid-template-columns: 5fr 2fr;
+        gap: 24px;
+        align-items: start;
+        margin: 0 auto; /* keep centered within container */
+    }
+
+    /* Allow sections to shrink within their grid columns to avoid overflow */
+    #app > .section {
+        min-width: 0;
+    }
+
+    /* Standings - left column */
+    #app > .section:nth-child(1) {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    /* Race Progress - right column */
+    #app > .section:nth-child(2) {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    /* Stack stats vertically on large screens and reorder with Total first */
+    .progress-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    /* Reorder: Total (1), Completed (2), Remaining (3), Sprints (4), Max Points (5) */
+    .stat-total { order: 1; }
+    .stat-completed { order: 2; }
+    .stat-remaining { order: 3; }
+    .stat-sprints { order: 4; }
+    .stat-max { order: 5; }
+
+    /* Scenarios - left column */
+    #app > .section:nth-child(3) {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    /* Simulation Controls - right column */
+    #app > .section:nth-child(4) {
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    /* Results - full width */
+    #results-section {
+        grid-column: 1 / -1;
+        grid-row: 3;
+    }
+
+    /* Path to Victory - full width */
+    #app > .section:nth-child(6) {
+        grid-column: 1 / -1;
+        grid-row: 4;
+    }
+    /* Stack simulation options vertically to fit the narrower right column */
+    .simulation-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .simulation-option {
+        width: 100%;
+        min-width: 0; /* override 200px min to prevent overflow */
+    }
+    .simulation-controls .btn {
+        width: 100%;
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 2rem;
+    }
+
+    .scenario-row {
+        grid-template-columns: 1fr;
+    }
+
+    .progress-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .simulation-controls {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+
+    .footer-content {
+        flex-direction: column;
+        gap: 20px;
+        padding: 0 10px;
+    }
+
+    .footer-text,
+    .footer-tagline {
+        text-align: center;
+    }
+
+    .coffee-btn {
+        font-size: 0.85rem;
+        padding: 8px 16px;
+    }
+}
