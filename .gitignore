@@ -12,3 +12,5 @@ points_progression_table.json
 f1-autocache/wrangler.toml
 f1-website/wrangler.toml
 wrangler.toml
+f1_driver_images_2025/
+f1-website/dist/driver-numbers/
