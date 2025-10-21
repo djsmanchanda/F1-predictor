@@ -2,6 +2,8 @@
 
 A production-ready Cloudflare Worker that provides cached F1 standings data using the Jolpi/Ergast API mirror.
 
+Quick start: After deployment, visit your Worker's base URL (e.g. https://your-worker.workers.dev/) to see an interactive API documentation page listing endpoints and sample outputs.
+
 ## Features
 
 - **Dynamic Discovery**: No hard-coded race lists - discovers the season dynamically

@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 6%;
+  --foreground: 0 0% 98%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 63.9%;
+  --popover: 0 0% 6%;
+  --popover-foreground: 0 0% 98%;
+  --card: 0 0% 8%;
+  --card-foreground: 0 0% 98%;
+  --border: 0 0% 14.9%;
+  --input: 0 0% 14.9%;
+  --primary: 359 97% 45%; /* F1 red */
+  --primary-foreground: 0 0% 98%;
+  --secondary: 235 80% 45%;
+  --secondary-foreground: 0 0% 98%;
+  --accent: 33 100% 56%; /* orange accent */
+  --accent-foreground: 0 0% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --ring: 359 97% 45%;
+  --radius: 0.8rem;
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body, #root { height: 100%; }
+  body { @apply bg-background text-foreground antialiased; }
+}
+
+@layer components {
+  .container-page { @apply mx-auto max-w-6xl p-6 md:p-10; }
+  .card { @apply bg-card text-card-foreground rounded-lg border shadow-sm; }
+  .btn { @apply inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none; }
+  .btn-primary { @apply btn bg-primary text-primary-foreground hover:bg-red-600; }
+  .btn-secondary { @apply btn bg-muted text-foreground hover:bg-neutral-800; }
+  .btn-accent { @apply btn bg-accent text-accent-foreground hover:bg-orange-500; }
+  .scrollbar-slim { scrollbar-width: thin; scrollbar-color: rgba(160,160,160,.6) transparent; }
+  .scrollbar-slim::-webkit-scrollbar { height: 8px; }
+  .scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-slim::-webkit-scrollbar-thumb { background-color: rgba(160,160,160,.6); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+  .scrollbar-slim:hover::-webkit-scrollbar-thumb { background-color: rgba(200,200,200,.75); }
+}
+
+.tabular-nums { font-variant-numeric: tabular-nums; }
+.size-10 { width: 40px; height: 40px; }
+.animate-spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
