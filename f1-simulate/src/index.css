@@ -33,19 +33,55 @@
 
 @layer components {
   .container-page { @apply mx-auto max-w-6xl p-6 md:p-10; }
-  .card { @apply bg-card text-card-foreground rounded-lg border shadow-sm; }
+
+  .card {
+    @apply bg-card text-card-foreground rounded-lg border shadow-sm;
+    box-sizing: border-box;
+    min-width: 0; /* fix for child element overflows */
+  }
+
+  .card-fixed-row {
+    @apply p-2 md:p-3;
+    min-height: 56px;     /* consistent height for rows */
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .responsive-title { @apply text-xl md:text-2xl lg:text-3xl font-extrabold tracking-tight; }
+  .responsive-sub { @apply text-xs md:text-sm text-muted-foreground; }
+  .responsive-body { @apply text-sm md:text-base; }
+
+  /* Buttons */
   .btn { @apply inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none; }
   .btn-primary { @apply btn bg-primary text-primary-foreground hover:bg-red-600; }
   .btn-secondary { @apply btn bg-muted text-foreground hover:bg-neutral-800; }
   .btn-accent { @apply btn bg-accent text-accent-foreground hover:bg-orange-500; }
-  .scrollbar-slim { scrollbar-width: thin; scrollbar-color: rgba(160,160,160,.6) transparent; }
+
+  /* Slim scrollbar */
+  .scrollbar-slim { scrollbar-width: thin; scrollbar-color: rgba(111, 111, 111, 0.6) transparent; }
   .scrollbar-slim::-webkit-scrollbar { height: 8px; }
   .scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-slim::-webkit-scrollbar-thumb { background-color: rgba(160,160,160,.6); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
   .scrollbar-slim:hover::-webkit-scrollbar-thumb { background-color: rgba(200,200,200,.75); }
+
+  /* Chart wrapper — make inline SVGs scale to container width */
+  .chart-wrapper { width: 100%; overflow: hidden; }
+  .chart-wrapper svg { width: 100% !important; height: auto !important; display: block; }
+
+  /* small utility to avoid stretched flex children */
+  .min-w-0 { min-width: 0; }
 }
 
 .tabular-nums { font-variant-numeric: tabular-nums; }
 .size-10 { width: 40px; height: 40px; }
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Mobile adjustments: reduce paddings and font sizes on narrow screens */
+@media (max-width: 640px) {
+  .container-page { @apply px-4 py-4 max-w-full; }
+  .card { @apply p-2; }
+  .card p, .card div { @apply text-sm; }
+  :root { --radius: 0.6rem; }
+}

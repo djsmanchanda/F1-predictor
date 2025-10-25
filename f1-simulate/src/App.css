@@ -1,9 +1,25 @@
+/* ==========================
+	Global App Styling
+	========================== */
+
 #root {
+	padding: 0;
+	text-align: center;
+	overflow-x: hidden; /* prevent horizontal scroll on mobile */
+	width: 100%; /* ensure root takes full width */
+}
+
+/* Container pages (moved padding here so content remains padded) */
+.container-page {
 	max-width: 1280px;
 	margin: 0 auto;
 	padding: 2rem;
-	text-align: center;
+	box-sizing: border-box;
 }
+
+/* ==========================
+	Logos
+	========================== */
 
 .logo {
 	height: 6em;
@@ -11,15 +27,22 @@
 	will-change: filter;
 	transition: filter 300ms;
 }
+
 .logo:hover {
 	filter: drop-shadow(0 0 2em #646cffaa);
 }
+
 .logo.react:hover {
 	filter: drop-shadow(0 0 2em #61dafbaa);
 }
+
 .logo.cloudflare:hover {
 	filter: drop-shadow(0 0 2em #f6821faa);
 }
+
+/* ==========================
+	Logo Animation
+	========================== */
 
 @keyframes logo-spin {
 	from {
@@ -36,10 +59,168 @@
 	}
 }
 
+/* ==========================
+	Card Styling
+	========================== */
+
 .card {
 	padding: 2em;
+	border-radius: var(--radius);
+	background-color: hsl(var(--card));
+	color: hsl(var(--card-foreground));
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+	text-align: left;
 }
 
+/* Utility for compact cards (used in tables or stats) */
+.card-compact {
+	padding: 1em;
+}
+
+/* Read-the-docs (footer link) */
 .read-the-docs {
 	color: #888;
+}
+
+/* ==========================
+	Chart Wrapper (Responsive)
+	========================== */
+
+.chart-wrapper {
+	width: 100%;
+	overflow-x: auto; /* allow horizontal scrolling for wide SVGs */
+	-webkit-overflow-scrolling: touch;
+}
+
+/* keep the chart's own vertical overflow off so the page scrolls vertically */
+.chart-wrapper {
+	overflow-y: visible;
+}
+
+.chart-wrapper svg {
+	width: 100% !important;
+	height: auto !important;
+	display: block;
+	margin: 0 auto;
+}
+
+/* ==========================
+	Button Consistency
+	========================== */
+
+button {
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+button:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+/* ==========================
+	Prevent accidental inner vertical scroll
+	========================== */
+
+/*
+	Ensure major layout wrappers do not create vertical scrollbars.
+	If you have specific components that need their own vertical scrolling,
+	make them explicitly (and sparingly) e.g. .panel-scroll { overflow-y: auto; }.
+*/
+.main-scrollable,
+.page-scrollable,
+.card,
+.card-compact {
+	overflow-y: visible;
+}
+
+/* ==========================
+	Responsive Adjustments
+	========================== */
+
+@media (max-width: 768px) {
+	.container-page {
+		padding: 1.25rem;
+	}
+
+	.card {
+		padding: 1rem;
+	}
+
+	.card p,
+	.card div {
+		font-size: 0.9rem;
+		line-height: 1.3;
+	}
+
+	h1,
+	h2,
+	h3 {
+		font-size: 1.1rem;
+		line-height: 1.3;
+	}
+
+	.logo {
+		height: 4.5em;
+		padding: 1em;
+	}
+
+	.chart-wrapper {
+		margin: 0 auto;
+	}
+}
+
+@media (max-width: 480px) {
+	.container-page {
+		padding: 0.75rem;
+	}
+
+	.card {
+		padding: 0.75rem;
+	}
+
+	.card p,
+	.card div {
+		font-size: 0.85rem;
+	}
+
+	.logo {
+		height: 3.5em;
+		padding: 0.5em;
+	}
+}
+
+/* ==========================
+	Dark Scrollbar (Edge-aligned)
+	========================== */
+
+/* WebKit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+/* Transparent track keeps it flush with edge */
+::-webkit-scrollbar-track {
+	background: transparent;
+	margin: 0;
+}
+
+/* Dark scrollbar thumb aligned perfectly to edge */
+::-webkit-scrollbar-thumb {
+	background-color: rgba(50, 50, 50, 0.95); /* deep dark grey thumb */
+	border-radius: 9999px;
+	border: 2px solid transparent; /* ensures perfect edge alignment */
+	background-clip: content-box;
+}
+
+/* Hover: slightly brighter thumb */
+::-webkit-scrollbar-thumb:hover {
+	background-color: rgba(90, 90, 90, 1);
+}
+
+/* Firefox support */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(80, 80, 80, 0.9) transparent;
 }

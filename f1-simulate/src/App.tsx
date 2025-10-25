@@ -3,6 +3,13 @@ import "./App.css";
 import { useF1Simulator } from "./lib/useF1Simulator";
 import type { AppData } from "./types";
 import { TEAM_COLORS, colorVariant } from "./lib/teamColors";
+import {
+  buildShareURL,
+  buildParameterizedURL,
+  shortenURL,
+  copyTextToClipboard,
+  type SimulationType,
+} from "./lib/share";
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -55,12 +62,20 @@ export default function App() {
             <ScenarioEditor {...sim} />
           </Section>
 
-          <Section title="Simulate your Scenarios" subtitle="2000 simulations">
+          <Section title="Simulate your Scenarios" subtitle="10000 simulations">
             <SimulatePanel {...sim} />
           </Section>
 
           <Section title="Championship Win Probability">
             <ResultsPanel results={sim.results} data={data} />
+            {sim.results && sim.results.length > 0 && (
+              <ShareButtons 
+                scenarios={sim.scenarios}
+                remainingRaces={sim.remainingRaces}
+                remainingSprints={sim.remainingSprints}
+                simulationType="standard"
+              />
+            )}
           </Section>
 
           <Section title="Path to Victory (beta)" subtitle="See what needs to happen for a driver to win">
@@ -193,7 +208,7 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
 
     const prevGap = Math.max(0, leaderPrevPts - (prevPoints[d] ?? 0));
     const nowGap = Math.max(0, leaderPts - (data.currentPoints[d] ?? 0));
-    const diff = prevGap - nowGap;
+    const diff = nowGap - prevGap;
 
     if (nowGap < prevGap)
       return (
@@ -207,7 +222,7 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
       return (
         <span className="inline-flex items-center gap-1">
           <span className="text-red-500">▼</span>
-          <span className="text-muted-foreground tabular-nums">{diff}</span>
+          <span className="text-muted-foreground tabular-nums">{diff > 0 ? `+${diff}` : diff}</span>
         </span>
       );
 
@@ -227,7 +242,7 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
     const currAbovePts = currentIndex === 0 ? null : (sorted[currentIndex - 1]?.[1] ?? null);
     const nowGapPrev =
       currAbovePts == null ? 0 : Math.max(0, (currAbovePts ?? 0) - (data.currentPoints[d] ?? 0));
-    const diff = prevGapPrev - nowGapPrev;
+    const diff = nowGapPrev - prevGapPrev;
 
     if (nowGapPrev < prevGapPrev)
       return (
@@ -241,17 +256,48 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
       return (
         <span className="inline-flex items-center gap-1">
           <span className="text-red-500">▼</span>
-          <span className="text-muted-foreground tabular-nums">{diff}</span>
+          <span className="text-muted-foreground tabular-nums">{diff > 0 ? `+${diff}` : diff}</span>
         </span>
       );
 
     return <span className="text-muted-foreground">—</span>;
   };
 
+  const PositionChange = ({ d, currentIndex }: { d: number; currentIndex: number }) => {
+    if (prevOrder == null) return null;
+
+    const prevPos = prevOrder.indexOf(d);
+    if (prevPos < 0) return null;
+
+    const posChange = prevPos - currentIndex;
+    
+    if (posChange > 0) {
+      // Moved up (previous position was higher number = worse position)
+      return (
+        <span className="inline-flex items-center gap-0.5 ml-1">
+          <span className="text-green-500 text-[0.6rem]">▲</span>
+          <span className="text-green-500/60 text-[0.65rem] tabular-nums">{posChange}</span>
+        </span>
+      );
+    }
+
+    if (posChange < 0) {
+      // Moved down
+      return (
+        <span className="inline-flex items-center gap-0.5 ml-1">
+          <span className="text-red-500 text-[0.6rem]">▼</span>
+          <span className="text-red-500/60 text-[0.65rem] tabular-nums">{Math.abs(posChange)}</span>
+        </span>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div className="card p-0 overflow-hidden">
       <div className="overflow-x-auto">
-        <div className="min-w-[720px]">
+        <div className="min-w-0 w-full">
           <div className="grid grid-cols-[4rem_1fr_8rem_8rem_6rem] items-center bg-muted/60 px-4 py-2 text-sm font-medium">
             <div className="text-left">Pos</div>
             <div className="text-left">Driver</div>
@@ -277,9 +323,12 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
                       : isContender
                       ? "bg-green-900/15 ring-1 ring-green-500/25"
                       : "bg-background/40"
-                  }`}
+                  } card-fixed-row`}
                 >
-                  <div className="px-2 font-medium">{absIndex + 1}</div>
+                  <div className="px-2 font-medium inline-flex items-center">
+                    <span>{absIndex + 1}</span>
+                    <PositionChange d={num} currentIndex={absIndex} />
+                  </div>
                   <div className="px-2">
                     <div className="flex items-center gap-3">
                       <span className="inline-flex items-center justify-center w-7 h-7 rounded-[35%] bg-neutral-200/80">
@@ -290,7 +339,7 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
                           onError={(e) => ((e.currentTarget.style.display = 'none'), undefined)}
                         />
                       </span>
-                      <span className="font-semibold">{data.driverNames[num] || `Driver #${num}`}</span>
+                      <span className="font-semibold truncate max-w-[120px] md:max-w-none">{data.driverNames[num] || `Driver #${num}`}</span>
                     </div>
                   </div>
                   <div className="px-2 text-center">
@@ -397,8 +446,12 @@ function ScenarioEditor({ data, scenarios, setScenarioList, remainingRaces, rema
 
 function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, onChange, onCopyOne, onCopyAllFromCurrent }: { eventIndex: number; drivers: number[]; driverNames: Record<number, string>; value: ScenarioItem[]; onChange: (v: ScenarioItem[]) => void; onCopyOne?: (idx: number) => void; onCopyAllFromCurrent?: () => void }) {
   const takenDrivers = new Set((value || []).filter((s) => s.type === "position").map((s) => s.driver1));
+  const takenPositions = new Set((value || []).filter((s) => s.type === "position").map((s) => s.value));
   const firstAvailable = drivers.find((d) => !takenDrivers.has(d)) ?? drivers[0];
-  const add = () => onChange([...(value || []), { type: "position", driver1: firstAvailable, value: "1" }]);
+  const add = () => {
+    const firstAvailablePosition = Array.from({ length: 20 }, (_, i) => String(i + 1)).find((p) => !takenPositions.has(p)) ?? "1";
+    onChange([...(value || []), { type: "position", driver1: firstAvailable, value: firstAvailablePosition }]);
+  };
   const remove = (idx: number) => onChange(value.filter((_, i) => i !== idx));
   const move = (from: number, to: number) => {
     if (to < 0 || to >= (value?.length || 0)) return;
@@ -419,6 +472,13 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
             const avail = drivers.find((d) => !othersTaken.has(d));
             if (avail != null) next.driver1 = avail;
           }
+          // Also check if position is already taken
+          const othersTakenPos = new Set((value || []).filter((s, j) => j !== idx && s.type === "position").map((s) => s.value));
+          if (othersTakenPos.has(next.value)) {
+            // Find first available position
+            const availPos = Array.from({ length: 20 }, (_, i) => String(i + 1)).find((p) => !othersTakenPos.has(p));
+            if (availPos != null) next.value = availPos;
+          }
         }
         return next;
       })
@@ -438,11 +498,11 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
       ) : null}
       {(value || []).map((s, idx) => (
         <div key={idx} className="flex gap-2 items-center">
-          <select className="card px-3 py-2" value={s.type} onChange={(e) => update(idx, { type: e.target.value as any })}>
+          <select className="card px-3 py-2 w-40" value={s.type} onChange={(e) => update(idx, { type: e.target.value as any })}>
             <option value="position">Set Position</option>
             <option value="above">A Above B</option>
           </select>
-          <select className="card px-3 py-2 flex-1" value={s.driver1} onChange={(e) => update(idx, { driver1: parseInt(e.target.value, 10) })}>
+          <select className="card px-3 py-2 flex-1 min-w-0" value={s.driver1} onChange={(e) => update(idx, { driver1: parseInt(e.target.value, 10) })}>
             {drivers.map((d) => {
               const isTaken = takenDrivers.has(d) && !(s.type === "position" && s.driver1 === d);
               return (
@@ -454,13 +514,20 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
             })}
           </select>
           {s.type === "position" ? (
-            <select className="card px-3 py-2" value={s.value} onChange={(e) => update(idx, { value: e.target.value })}>
-              {Array.from({ length: 20 }, (_, i) => (
-                <option key={i + 1} value={String(i + 1)}>{`Position ${i + 1}`}</option>
-              ))}
+            <select className="card px-3 py-2 w-44" value={s.value} onChange={(e) => update(idx, { value: e.target.value })}>
+              {Array.from({ length: 20 }, (_, i) => {
+                const pos = String(i + 1);
+                const isTaken = takenPositions.has(pos) && s.value !== pos;
+                return (
+                  <option key={i + 1} value={pos} disabled={isTaken}>
+                    {`Position ${i + 1}`}
+                    {isTaken ? " (used)" : ""}
+                  </option>
+                );
+              })}
             </select>
           ) : (
-            <select className="card px-3 py-2" value={s.value} onChange={(e) => update(idx, { value: e.target.value })}>
+            <select className="card px-3 py-2 w-44" value={s.value} onChange={(e) => update(idx, { value: e.target.value })}>
               {drivers.filter((d) => d !== s.driver1).map((d) => (
                 <option key={d} value={String(d)}>{`#${d} — ${driverNames[d] || `Driver #${d}`}`}</option>
               ))}
@@ -497,7 +564,7 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
     setBusy(true);
     setTimeout(() => {
       if (sim.data) {
-        sim.simulate(2000, type);
+        sim.simulate(10000, type);
       }
       setBusy(false);
     }, 50);
@@ -516,29 +583,122 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
 }
 
 function ResultsPanel({ results, data }: { results: Array<{ driver: number; percentage: number }> | null; data: AppData | null }) {
-  if (!results || !data || results.length === 0) {
-    return <div className="card p-4 text-muted-foreground">Run a simulation to see results.</div>;
-  }
-  const top = results.slice(0, 5);
-  return (
-    <div className="space-y-2">
-      {top.map((r) => (
-        <div key={r.driver} className="card p-3">
-          <div className="flex items-center gap-4">
-            <div className="w-10 text-sm text-muted-foreground">#{r.driver}</div>
-            <div className="flex-1">
-              <div className="font-medium">{data.driverNames[r.driver] || `Driver #${r.driver}`}</div>
-              <div className="h-2 mt-2 rounded bg-muted">
-                <div className="h-2 rounded bg-green-500" style={{ width: `${r.percentage}%` }} />
-              </div>
-            </div>
-            <div className="w-16 text-right font-semibold">{r.percentage.toFixed(1)}%</div>
-          </div>
+    if (!results || !data || results.length === 0) {
+        return <div className="card p-4 text-muted-foreground">Run a simulation to see results.</div>;
+    }
+
+    // sort primarily by win percentage, then by current championship points (desc), then by driver number
+    const sorted = [...results].sort((a, b) => {
+        const pctDiff = b.percentage - a.percentage;
+        if (Math.abs(pctDiff) > 1e-9) return pctDiff;
+        const ptsA = data.currentPoints[a.driver] ?? 0;
+        const ptsB = data.currentPoints[b.driver] ?? 0;
+        const ptsDiff = ptsB - ptsA;
+        if (ptsDiff !== 0) return ptsDiff;
+        return a.driver - b.driver;
+    });
+
+    const top = sorted.slice(0, 5);
+    return (
+        <div className="space-y-2">
+            {top.map((r) => (
+                <div key={r.driver} className="card p-3">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 text-sm text-muted-foreground">#{r.driver}</div>
+                        <div className="flex-1">
+                            <div className="font-medium">{data.driverNames[r.driver] || `Driver #${r.driver}`}</div>
+                            <div className="h-2 mt-2 rounded bg-muted">
+                                <div className="h-2 rounded bg-green-500" style={{ width: `${r.percentage}%` }} />
+                            </div>
+                        </div>
+                        <div className="w-16 text-right font-semibold">{r.percentage.toFixed(1)}%</div>
+                    </div>
+                </div>
+            ))}
         </div>
-      ))}
+    );
+}
+
+function ShareButtons({ 
+  scenarios, 
+  remainingRaces, 
+  remainingSprints, 
+  simulationType = 'standard' 
+}: { 
+  scenarios: Record<number, Array<{ type: 'position' | 'above'; driver1: number; value: string }>>; 
+  remainingRaces: Array<{ round: number }>; 
+  remainingSprints: Array<{ round: number }>; 
+  simulationType?: SimulationType;
+}) {
+  const [shareStatus, setShareStatus] = useState<string>('');
+  const [isSharing, setIsSharing] = useState(false);
+
+  const hasScenarios = Object.keys(scenarios).length > 0;
+
+  const handleShare = async (e: React.MouseEvent) => {
+    if (!hasScenarios) return;
+    
+    setIsSharing(true);
+    setShareStatus('');
+
+    try {
+      // Ctrl+click = copy full parameterized URL
+      if (e.ctrlKey || e.metaKey) {
+        const paramUrl = buildParameterizedURL(scenarios, remainingRaces, remainingSprints, simulationType);
+        await copyTextToClipboard(paramUrl);
+        setShareStatus('✓ Full URL copied!');
+      } else {
+        // Default: create shortened URL
+        const compressedUrl = buildShareURL(scenarios, remainingRaces, remainingSprints, simulationType);
+        try {
+          const shortUrl = await shortenURL(compressedUrl);
+          await copyTextToClipboard(shortUrl);
+          setShareStatus('✓ Link copied!');
+        } catch (err) {
+          console.error('Shortening failed, using compressed URL:', err);
+          await copyTextToClipboard(compressedUrl);
+          setShareStatus('✓ Link copied!');
+        }
+      }
+
+      setTimeout(() => setShareStatus(''), 3000);
+    } catch (err) {
+      console.error('Share failed:', err);
+      setShareStatus('✗ Failed to copy');
+      setTimeout(() => setShareStatus(''), 3000);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-3 items-center">
+      <button
+        onClick={handleShare}
+        disabled={!hasScenarios || isSharing}
+        className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        title={hasScenarios ? "Click to copy short link, Ctrl+Click for full URL" : "Run a simulation first"}
+      >
+        {isSharing ? '⏳ Creating link...' : '🔗 Share'}
+      </button>
+      
+      <button
+        disabled
+        className="btn-secondary opacity-30 cursor-not-allowed"
+        title="Coming soon"
+      >
+        𝕏 Share to X
+      </button>
+
+      {shareStatus && (
+        <span className={`text-sm ${shareStatus.startsWith('✓') ? 'text-green-500' : 'text-red-500'}`}>
+          {shareStatus}
+        </span>
+      )}
     </div>
   );
 }
+
 
 function PointsProgression({ data }: { data: AppData }) {
   const [mode, setMode] = useState<'all'|'top5'|'battle3'>('all');
@@ -730,15 +890,16 @@ function SparkLines({ labels, dataSeries, palette, yLabel, selectedSet, onToggle
 
   return (
     <div className="overflow-x-auto relative">
-      <svg width={width} height={height} className="block"
-        onMouseMove={(e) => {
-          const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const i = Math.max(0, Math.min(extLabels.length - 1, Math.round((x - padding.left) / xStep)));
-          setHover({ i });
-        }}
-        onMouseLeave={() => setHover(null)}
-      >
+      <div className="chart-wrapper p-1">
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="auto" preserveAspectRatio="xMidYMid meet" className="block"
+          onMouseMove={(e) => {
+            const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const i = Math.max(0, Math.min(extLabels.length - 1, Math.round((x - padding.left) / xStep)));
+            setHover({ i });
+          }}
+          onMouseLeave={() => setHover(null)}
+        >
         {/* X-axis labels (rotated) */}
         {extLabels.map((l, i) => (
           i % labelStride === 0 ? (
@@ -774,6 +935,7 @@ function SparkLines({ labels, dataSeries, palette, yLabel, selectedSet, onToggle
           <line x1={scaleX(hover.i)} x2={scaleX(hover.i)} y1={padding.top} y2={height - padding.bottom} stroke="#999" strokeDasharray="3 3" />
         )}
       </svg>
+      </div>
       {hover && hover.i>0 && (
         <div className="absolute top-2 left-2 card px-3 py-2 text-xs max-w-sm">
           <div className="font-medium mb-1">{extLabels[hover.i]}</div>
@@ -838,17 +1000,18 @@ function DeltaLeader({ labels, allSeries, topSeries, palette, sprintWeeks }: { l
   const [hover, setHover] = useState<{i: number} | null>(null);
 
   return (
-    <svg width={width} height={height} className="block"
-      onMouseMove={(e) => {
-        const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const i = Math.max(0, Math.min(extLabels.length - 1, Math.round((x - padding.left) / xStep)));
-        setHover({ i });
-      }}
-      onMouseLeave={() => setHover(null)}
-    >
-      {/* X-axis labels */}
-      {extLabels.map((l, i) => (
+    <div className="chart-wrapper p-1">
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="auto" preserveAspectRatio="xMidYMid meet" className="block"
+        onMouseMove={(e) => {
+          const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const i = Math.max(0, Math.min(extLabels.length - 1, Math.round((x - padding.left) / xStep)));
+          setHover({ i });
+        }}
+        onMouseLeave={() => setHover(null)}
+      >
+        {/* X-axis labels */}
+        {extLabels.map((l, i) => (
         <g key={i} transform={`translate(${scaleX(i)}, ${height - 8}) rotate(-35)`}>
           <text fontSize={10} fill="#999" textAnchor="end">{i===0 ? '' : l.replace(/ Grand Prix$/,'')}</text>
         </g>
@@ -879,6 +1042,7 @@ function DeltaLeader({ labels, allSeries, topSeries, palette, sprintWeeks }: { l
         <line x1={scaleX(hover.i)} x2={scaleX(hover.i)} y1={padding.top} y2={height - padding.bottom} stroke="#999" strokeDasharray="3 3" />
       )}
     </svg>
+    </div>
   );
 }
 
@@ -907,17 +1071,18 @@ function BattleThree({ labels, battleSeries, palette, sprintWeeks }: { labels: s
   const [hover, setHover] = useState<{i: number} | null>(null);
   
   return (
-    <svg width={width} height={height} className="block"
-      onMouseMove={(e) => {
-        const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const i = Math.max(0, Math.min(extLabels.length - 1, Math.round((x - padding.left) / xStep)));
-        setHover({ i });
-      }}
-      onMouseLeave={() => setHover(null)}
-    >
-      {/* X-axis labels */}
-      {extLabels.map((l, i) => (
+    <div className="chart-wrapper p-1">
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="auto" preserveAspectRatio="xMidYMid meet" className="block"
+        onMouseMove={(e) => {
+          const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const i = Math.max(0, Math.min(extLabels.length - 1, Math.round((x - padding.left) / xStep)));
+          setHover({ i });
+        }}
+        onMouseLeave={() => setHover(null)}
+      >
+        {/* X-axis labels */}
+        {extLabels.map((l, i) => (
         <g key={i} transform={`translate(${scaleX(i)}, ${height - 8}) rotate(-35)`}>
           <text fontSize={10} fill="#999" textAnchor="end">{i===0 ? '' : l.replace(/ Grand Prix$/,'')}</text>
         </g>
@@ -948,6 +1113,7 @@ function BattleThree({ labels, battleSeries, palette, sprintWeeks }: { labels: s
         <line x1={scaleX(hover.i)} x2={scaleX(hover.i)} y1={padding.top} y2={height - padding.bottom} stroke="#999" strokeDasharray="3 3" />
       )}
     </svg>
+    </div>
   );
 }
 
