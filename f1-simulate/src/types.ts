@@ -22,6 +22,6 @@ export type ScenarioPosition = { type: "position"; driver1: DriverNum; value: st
 export type ScenarioAbove = { type: "above"; driver1: DriverNum; value: string /* other driver */ };
 export type Scenario = ScenarioPosition | ScenarioAbove;
 
-export type SimulationType = "standard" | "realistic";
+export type SimulationType = "standard" | "realistic" | "recent-form";
 
 export type ResultItem = { driver: DriverNum; percentage: number };

@@ -12,7 +12,7 @@ export type ScenarioItem = {
   value: string;
 };
 
-export type SimulationType = 'standard' | 'realistic' | 'custom1' | 'custom2';
+export type SimulationType = 'standard' | 'realistic' | 'recent-form' | 'custom1' | 'custom2';
 
 /**
  * Encode scenarios to compressed base64 format
@@ -25,7 +25,7 @@ export function encodeCompressedScenarios(
   remainingSprints: Array<{ round: number }>,
   simulationType: SimulationType = 'standard'
 ): string {
-  const simCode = simulationType === 'realistic' ? 'r' : simulationType === 'custom1' ? 'c1' : simulationType === 'custom2' ? 'c2' : 's';
+  const simCode = simulationType === 'realistic' ? 'r' : simulationType === 'recent-form' ? 'rf' : simulationType === 'custom1' ? 'c1' : simulationType === 'custom2' ? 'c2' : 's';
   
   const raceData: string[] = [];
   const sprintData: string[] = [];
@@ -89,6 +89,7 @@ export function decodeCompressedScenarios(
     
     const simType: SimulationType = 
       simPart === 'r' ? 'realistic' : 
+      simPart === 'rf' ? 'recent-form' :
       simPart === 'c1' ? 'custom1' : 
       simPart === 'c2' ? 'custom2' : 'standard';
 

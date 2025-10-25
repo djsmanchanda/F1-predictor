@@ -1,3 +1,4 @@
+//src/App.tsx
 import { useEffect, useState } from "react";
 import "./App.css";
 import { useF1Simulator } from "./lib/useF1Simulator";
@@ -560,24 +561,199 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
 
 function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
   const [busy, setBusy] = useState(false);
-  const run = (type: "standard" | "realistic") => {
+  const [showFormSelector, setShowFormSelector] = useState(false);
+  const [selectedFormType, setSelectedFormType] = useState<"recent-form" | "momentum">("recent-form");
+  const [lastSimType, setLastSimType] = useState<"standard" | "realistic" | "recent-form" | "momentum" | null>(null);
+  const [showInfo, setShowInfo] = useState<string | null>(null);
+
+  const simInfo = {
+    standard: "Completely random race outcomes with equal probability for all drivers. No biases or patterns.",
+    realistic: "Top 5 championship drivers have a 60% chance to finish in top positions, simulating more predictable outcomes.",
+    "recent-form": "Analyzes recent race performance to weight probabilities. Use the unpredictability slider to control randomness vs form-based predictions.",
+    momentum: "Similar to Recent Form but emphasizes current trajectory. Lower unpredictability = stronger momentum effect."
+  };
+
+  const run = (type: "standard" | "realistic" | "recent-form" | "momentum") => {
+    if (type === "recent-form" || type === "momentum") {
+      setShowFormSelector(true);
+      setSelectedFormType(type);
+      return;
+    }
+    setShowFormSelector(false);
+    setLastSimType(type);
     setBusy(true);
     setTimeout(() => {
       if (sim.data) {
-        sim.simulate(10000, type);
+        // cast to any to avoid strict SimulationType mismatch
+        sim.simulate(10000, type as any);
+        setBusy(false);
+      } else {
+        setBusy(false);
       }
-      setBusy(false);
     }, 50);
   };
+
+  const runRecentForm = () => {
+    setShowFormSelector(false);
+    setLastSimType(selectedFormType);
+    setBusy(true);
+    setTimeout(() => {
+      if (sim.data) {
+        sim.fetchRecentFormData(sim.recentFormWeeks).then(() => {
+          sim.simulate(10000, selectedFormType as any);
+          setBusy(false);
+        });
+      } else {
+        setBusy(false);
+      }
+    }, 50);
+  };
+
+  const getButtonClass = (type: "standard" | "realistic" | "recent-form" | "momentum") => {
+    const baseClass = "relative card p-4 text-left transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100";
+    const isSelected = lastSimType === type || (showFormSelector && (type === "recent-form" || type === "momentum") && selectedFormType === type);
+    const selectedClass = isSelected ? "ring-2 ring-primary shadow-lg shadow-primary/20" : "";
+    return `${baseClass} ${selectedClass}`;
+  };
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <button className="btn-primary" disabled={busy} onClick={() => run("standard")}>
-        {busy ? "⏳ Simulating..." : "🎯 Standard Simulation"}
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <button className={getButtonClass("standard")} disabled={busy} onClick={() => run("standard")}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <div className="font-semibold">{busy && lastSimType === "standard" ? "⏳ Simulating..." : "🎯 Standard"}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Random outcomes</div>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "standard" ? null : "standard"); }}
+              className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+              title="More info"
+            >
+              ⓘ
+            </button>
+          </div>
+          {showInfo === "standard" && (
+            <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+              {simInfo.standard}
+            </div>
+          )}
+        </button>
+        <button className={getButtonClass("realistic")} disabled={busy} onClick={() => run("realistic")}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <div className="font-semibold">{busy && lastSimType === "realistic" ? "⏳ Simulating..." : "🏎️ Realistic"}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Top 5 favored</div>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "realistic" ? null : "realistic"); }}
+              className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+              title="More info"
+            >
+              ⓘ
+            </button>
+          </div>
+          {showInfo === "realistic" && (
+            <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+              {simInfo.realistic}
+            </div>
+          )}
+        </button>
+        <button className={getButtonClass("recent-form")} disabled={busy} onClick={() => run("recent-form")}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <div className="font-semibold">{busy && lastSimType === "recent-form" ? "⏳ Simulating..." : "📊 Recent Form"}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Performance-based</div>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "recent-form" ? null : "recent-form"); }}
+              className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+              title="More info"
+            >
+              ⓘ
+            </button>
+          </div>
+          {showInfo === "recent-form" && (
+            <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+              {simInfo["recent-form"]}
+            </div>
+          )}
+        </button>
+        <button className={getButtonClass("momentum")} disabled={busy} onClick={() => run("momentum")}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <div className="font-semibold">{busy && lastSimType === "momentum" ? "⏳ Simulating..." : "🔁 Momentum"}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Trajectory-focused</div>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "momentum" ? null : "momentum"); }}
+              className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+              title="More info"
+            >
+              ⓘ
+            </button>
+          </div>
+          {showInfo === "momentum" && (
+            <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+              {simInfo.momentum}
+            </div>
+          )}
+        </button>
+      </div>
+
+      <div 
+        className="overflow-hidden transition-all duration-300 ease-in-out"
+        style={{ 
+          maxHeight: showFormSelector ? '200px' : '0',
+          opacity: showFormSelector ? 1 : 0
+        }}
+      >
+        <div className="card p-4 space-y-4">
+          <div className="flex items-center gap-4">
+            <label htmlFor="form-weeks" className="text-sm font-medium whitespace-nowrap">Analyze last:</label>
+            <input
+              id="form-weeks"
+              type="range"
+              min="1"
+              max="20"
+              value={sim.recentFormWeeks}
+              onChange={(e) => sim.setRecentFormWeeks(parseInt(e.target.value))}
+              className="flex-1"
+              disabled={busy}
+            />
+            <span className="text-sm font-semibold w-16 text-center">{sim.recentFormWeeks} races</span>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <label htmlFor="unpredictability" className="text-sm font-medium whitespace-nowrap">Unpredictability:</label>
+            <input
+              id="unpredictability"
+              type="range"
+              min="0"
+              max="100"
+              value={sim.unpredictability}
+              onChange={(e) => sim.setUnpredictability(parseInt(e.target.value))}
+              className="flex-1"
+              disabled={busy}
+            />
+            <span className="text-sm font-semibold w-16 text-center">{sim.unpredictability}%</span>
+          </div>
+
+          <div className="flex justify-end">
+            <button 
+              className="btn-primary px-6 py-2 text-sm whitespace-nowrap" 
+              disabled={busy} 
+              onClick={runRecentForm}
+            >
+              {busy ? "⏳ Simulating..." : "▶️ Run"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <button className="btn-secondary w-full" disabled={busy} onClick={() => sim.clearAllScenarios()}>
+        🗑️ Clear All Scenarios
       </button>
-      <button className="btn-accent" disabled={busy} onClick={() => run("realistic")}>
-        {busy ? "⏳ Simulating..." : "🏎️ Realistic Simulation"}
-      </button>
-      <button className="btn-secondary" disabled={busy} onClick={() => sim.clearAllScenarios()}>🗑️ Clear All Scenarios</button>
     </div>
   );
 }
