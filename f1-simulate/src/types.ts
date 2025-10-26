@@ -24,4 +24,4 @@ export type Scenario = ScenarioPosition | ScenarioAbove;
 
 export type SimulationType = "standard" | "realistic" | "recent-form";
 
-export type ResultItem = { driver: DriverNum; percentage: number };
+export type ResultItem = { driver: DriverNum; percentage: number; avgPoints?: number };

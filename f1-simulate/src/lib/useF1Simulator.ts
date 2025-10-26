@@ -138,7 +138,7 @@ export function useF1Simulator() {
       const normalizedRecent = maxRaw > 0 ? rawScores[d] / maxRaw : 0;
       const normalizedChamp = (appData.currentPoints[d] ?? 0) / maxChamp;
       const combined = normalizedRecent * (1 - mixWithChamp) + normalizedChamp * mixWithChamp;
-      weights[d] = Math.max(0.01, combined * 10);
+      weights[d] = Math.max(0.01, combined * 3);
     }
 
     return weights;
@@ -166,36 +166,53 @@ export function useF1Simulator() {
       }
 
       if ((simType === "recent-form" || simType === "momentum") && formWeights) {
+        // map unpredictScale to predictability: 0 -> fully random, 1 -> fully deterministic
         const unpredictabilityValue = unpredictScale ?? 0.5;
-        
-        if (unpredictabilityValue === 0) {
-          // Fully deterministic: sort strictly by weights
-          const scored = drivers.map(d => ({ d, score: formWeights[d] ?? 0 }));
-          scored.sort((a, b) => {
-            if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
-            return a.d - b.d; // deterministic tie-break by driver number
-          });
-          order = scored.map(s => s.d);
-        } else if (unpredictabilityValue === 1) {
-          // Fully random: ignore weights completely
-          order = [...drivers].sort(() => Math.random() - 0.5);
-        } else {
-          // Blend weights with randomness
-          const noiseMul = simType === "momentum" ? 0.8 : 1.2;
-          const randomnessFactor = unpredictabilityValue * noiseMul * 2;
-          const scored = drivers.map(d => ({ 
-            d, 
-            score: (formWeights[d] ?? 0) * (1 - unpredictabilityValue) + (Math.random() - 0.5) * randomnessFactor 
-          }));
-          scored.sort((a, b) => b.score - a.score);
-          order = scored.map(s => s.d);
-          
-          if (simType === "momentum" && unpredictabilityValue < 0.8) {
-            const topSegment = order.slice(0, 3).sort(() => Math.random() - 0.5);
-            order = [...topSegment, ...order.slice(3)];
+
+        // helper: sample without replacement using softmax-proportional probabilities
+        const sampleOrderByWeights = (driversList: DriverNum[], weightsMap: Record<number, number>, predict: number) => {
+          // deterministic if predict very close to 1
+          if (predict >= 0.95) {
+            return [...driversList].sort((a, b) => {
+              const wa = weightsMap[a] ?? 0; const wb = weightsMap[b] ?? 0;
+              if (Math.abs(wb - wa) > 1e-9) return wb - wa;
+              return a - b;
+            });
           }
-        }
+
+          // temperature inversely related to predictability (higher predict -> lower temp)
+          const temperature = Math.max(0.25, 1 - predict); // range roughly 0.25..1.0
+          // build numeric logits (ensure positive-ish)
+          const logits = driversList.map(d => (weightsMap[d] ?? 0.01));
+          const maxLogit = Math.max(...logits, 0.0001);
+          const scores = logits.map(l => Math.exp((l - maxLogit) / temperature));
+          // sample without replacement proportionally to scores
+          const available = driversList.slice();
+          const availScores = scores.slice();
+          const out: DriverNum[] = [];
+          while (available.length > 0) {
+            const sum = availScores.reduce((a, b) => a + b, 0);
+            if (sum <= 0) {
+              // fallback shuffle
+              out.push(...available.sort(() => Math.random() - 0.5));
+              break;
+            }
+            let r = Math.random() * sum;
+            let pick = 0;
+            for (let i = 0; i < available.length; i++) {
+              r -= availScores[i];
+              if (r <= 0) { pick = i; break; }
+            }
+            out.push(available[pick]);
+            available.splice(pick, 1);
+            availScores.splice(pick, 1);
+          }
+          return out;
+        };
+
+        order = sampleOrderByWeights(order, formWeights, 1 - (unpredictabilityValue ?? 0.5));
       }
+
 
       let valid = true;
       for (const s of scList) {
@@ -233,7 +250,11 @@ export function useF1Simulator() {
       : undefined;
 
     const winCounts: Record<number, number> = {};
-    data.drivers.forEach((d) => (winCounts[d] = 0));
+    const pointsTotals: Record<number, number> = {};
+    data.drivers.forEach((d) => {
+      winCounts[d] = 0;
+      pointsTotals[d] = 0;
+    });
     for (let sim = 0; sim < actualIterations; sim++) {
       const simPoints: Record<number, number> = {};
       data.drivers.forEach((d) => (simPoints[d] = data.currentPoints[d] || 0));
@@ -246,13 +267,21 @@ export function useF1Simulator() {
         const order = generateOrder(data.drivers, scenarios[idx] || [], top5, simTypeRaw, formWeights, unpredictScale);
         order.slice(0, 8).forEach((driver, pos) => (simPoints[driver] += SPRINT_POINTS[pos]));
       }
+      // Track total points for averaging
+      data.drivers.forEach((d) => {
+        pointsTotals[d] += simPoints[d];
+      });
       let max = -1, winner: number | null = null;
       for (const [dStr, pts] of Object.entries(simPoints)) {
         const d = parseInt(dStr); if (pts > max) { max = pts; winner = d; }
       }
       if (winner != null && winCounts[winner] != null) winCounts[winner]++;
     }
-    const res = Object.entries(winCounts).map(([d, w]) => ({ driver: parseInt(d), percentage: (w / actualIterations) * 100 }));
+    const res = Object.entries(winCounts).map(([d, w]) => ({ 
+      driver: parseInt(d), 
+      percentage: (w / actualIterations) * 100,
+      avgPoints: Math.round(pointsTotals[parseInt(d)] / actualIterations)
+    }));
     lastResultsRef.current = res.sort((a, b) => b.percentage - a.percentage);
     setResults([...lastResultsRef.current]);
     lastSimTypeRef.current = simTypeRaw === "realistic" ? "real" : "std";

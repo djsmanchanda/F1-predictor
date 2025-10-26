@@ -568,7 +568,7 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
 
   const simInfo = {
     standard: "Completely random race outcomes with equal probability for all drivers. No biases or patterns.",
-    realistic: "Top 5 championship drivers have a 60% chance to finish in top positions, simulating more predictable outcomes.",
+    realistic: "Top 5 championship drivers have a higher chance of getting podiums, simulating more predictable outcomes.",
     "recent-form": "Analyzes recent race performance to weight probabilities. Use the unpredictability slider to control randomness vs form-based predictions.",
     momentum: "Similar to Recent Form but emphasizes current trajectory. Lower unpredictability = stronger momentum effect."
   };
@@ -594,7 +594,7 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
   };
 
   const runRecentForm = () => {
-    setShowFormSelector(false);
+    // Don't close the form selector anymore
     setLastSimType(selectedFormType);
     setBusy(true);
     setTimeout(() => {
@@ -612,117 +612,163 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
   const getButtonClass = (type: "standard" | "realistic" | "recent-form" | "momentum") => {
     const baseClass = "relative card p-4 text-left transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100";
     const isSelected = lastSimType === type || (showFormSelector && (type === "recent-form" || type === "momentum") && selectedFormType === type);
-    const selectedClass = isSelected ? "ring-2 ring-primary shadow-lg shadow-primary/20" : "";
+    const selectedClass = isSelected ? "ring-2 ring-primary shadow-lg shadow-primary/20 bg-neutral-700/30" : "";
     return `${baseClass} ${selectedClass}`;
   };
 
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <button className={getButtonClass("standard")} disabled={busy} onClick={() => run("standard")}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <div className="font-semibold">{busy && lastSimType === "standard" ? "⏳ Simulating..." : "🎯 Standard"}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Random outcomes</div>
-            </div>
+        {(() => {
+          const isSelected = lastSimType === "standard" && !showFormSelector;
+          return (
             <button
-              onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "standard" ? null : "standard"); }}
-              className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
-              title="More info"
+              className={getButtonClass("standard")}
+              data-selected={isSelected}
+              aria-pressed={isSelected}
+              disabled={busy}
+              onClick={() => run("standard")}
             >
-              ⓘ
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <div className="font-semibold">{busy && lastSimType === "standard" ? "⏳ Simulating..." : "🎯 Standard"}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Random outcomes</div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "standard" ? null : "standard"); }}
+                  className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+                  title="More info"
+                >
+                  ⓘ
+                </button>
+              </div>
+              {showInfo === "standard" && (
+                <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+                  {simInfo.standard}
+                </div>
+              )}
             </button>
-          </div>
-          {showInfo === "standard" && (
-            <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
-              {simInfo.standard}
-            </div>
-          )}
-        </button>
-        <button className={getButtonClass("realistic")} disabled={busy} onClick={() => run("realistic")}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <div className="font-semibold">{busy && lastSimType === "realistic" ? "⏳ Simulating..." : "🏎️ Realistic"}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Top 5 favored</div>
-            </div>
+          );
+        })()}
+        {(() => {
+          const isSelected = lastSimType === "realistic" && !showFormSelector;
+          return (
             <button
-              onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "realistic" ? null : "realistic"); }}
-              className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
-              title="More info"
+              className={getButtonClass("realistic")}
+              data-selected={isSelected}
+              aria-pressed={isSelected}
+              disabled={busy}
+              onClick={() => run("realistic")}
             >
-              ⓘ
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <div className="font-semibold">{busy && lastSimType === "realistic" ? "⏳ Simulating..." : "🏎️ Realistic"}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Top 5 favored</div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "realistic" ? null : "realistic"); }}
+                  className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+                  title="More info"
+                >
+                  ⓘ
+                </button>
+              </div>
+              {showInfo === "realistic" && (
+                <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+                  {simInfo.realistic}
+                </div>
+              )}
             </button>
-          </div>
-          {showInfo === "realistic" && (
-            <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
-              {simInfo.realistic}
-            </div>
-          )}
-        </button>
-        <button className={getButtonClass("recent-form")} disabled={busy} onClick={() => run("recent-form")}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <div className="font-semibold">{busy && lastSimType === "recent-form" ? "⏳ Simulating..." : "📊 Recent Form"}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Performance-based</div>
-            </div>
+          );
+        })()}
+        {(() => {
+          const isSelected = lastSimType === "recent-form" || (showFormSelector && selectedFormType === "recent-form");
+          return (
             <button
-              onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "recent-form" ? null : "recent-form"); }}
-              className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
-              title="More info"
+              className={getButtonClass("recent-form")}
+              data-selected={isSelected}
+              aria-pressed={isSelected}
+              disabled={busy}
+              onClick={() => run("recent-form")}
             >
-              ⓘ
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <div className="font-semibold">{busy && lastSimType === "recent-form" ? "⏳ Simulating..." : "📊 Recent Form"}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Performance-based</div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "recent-form" ? null : "recent-form"); }}
+                  className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+                  title="More info"
+                >
+                  ⓘ
+                </button>
+              </div>
+              {showInfo === "recent-form" && (
+                <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+                  {simInfo["recent-form"]}
+                </div>
+              )}
             </button>
-          </div>
-          {showInfo === "recent-form" && (
-            <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
-              {simInfo["recent-form"]}
-            </div>
-          )}
-        </button>
-        <button className={getButtonClass("momentum")} disabled={busy} onClick={() => run("momentum")}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <div className="font-semibold">{busy && lastSimType === "momentum" ? "⏳ Simulating..." : "🔁 Momentum"}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Trajectory-focused</div>
-            </div>
+          );
+        })()}
+        {(() => {
+          const isSelected = lastSimType === "momentum" || (showFormSelector && selectedFormType === "momentum");
+          return (
             <button
-              onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "momentum" ? null : "momentum"); }}
-              className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
-              title="More info"
+              className={getButtonClass("momentum")}
+              data-selected={isSelected}
+              aria-pressed={isSelected}
+              disabled={busy}
+              onClick={() => run("momentum")}
             >
-              ⓘ
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <div className="font-semibold">{busy && lastSimType === "momentum" ? "⏳ Simulating..." : "🔁 Momentum"}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Trajectory-focused</div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "momentum" ? null : "momentum"); }}
+                  className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+                  title="More info"
+                >
+                  ⓘ
+                </button>
+              </div>
+              {showInfo === "momentum" && (
+                <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+                  {simInfo.momentum}
+                </div>
+              )}
             </button>
-          </div>
-          {showInfo === "momentum" && (
-            <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
-              {simInfo.momentum}
-            </div>
-          )}
-        </button>
+          );
+        })()}
       </div>
 
       <div 
         className="overflow-hidden transition-all duration-300 ease-in-out"
         style={{ 
-          maxHeight: showFormSelector ? '200px' : '0',
+          maxHeight: showFormSelector ? (selectedFormType === "momentum" ? '120px' : '200px') : '0',
           opacity: showFormSelector ? 1 : 0
         }}
       >
         <div className="card p-4 space-y-4">
-          <div className="flex items-center gap-4">
-            <label htmlFor="form-weeks" className="text-sm font-medium whitespace-nowrap">Analyze last:</label>
-            <input
-              id="form-weeks"
-              type="range"
-              min="1"
-              max="20"
-              value={sim.recentFormWeeks}
-              onChange={(e) => sim.setRecentFormWeeks(parseInt(e.target.value))}
-              className="flex-1"
-              disabled={busy}
-            />
-            <span className="text-sm font-semibold w-16 text-center">{sim.recentFormWeeks} races</span>
-          </div>
+          {selectedFormType === "recent-form" && (
+            <div className="flex items-center gap-4">
+              <label htmlFor="form-weeks" className="text-sm font-medium whitespace-nowrap">Analyze last:</label>
+              <input
+                id="form-weeks"
+                type="range"
+                min="1"
+                max="20"
+                value={sim.recentFormWeeks}
+                onChange={(e) => sim.setRecentFormWeeks(parseInt(e.target.value))}
+                className="flex-1"
+                disabled={busy}
+              />
+              <span className="text-sm font-semibold w-16 text-center">{sim.recentFormWeeks} races</span>
+            </div>
+          )}
           
           <div className="flex items-center gap-4">
             <label htmlFor="unpredictability" className="text-sm font-medium whitespace-nowrap">Unpredictability:</label>
@@ -758,7 +804,9 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
   );
 }
 
-function ResultsPanel({ results, data }: { results: Array<{ driver: number; percentage: number }> | null; data: AppData | null }) {
+function ResultsPanel({ results, data }: { results: Array<{ driver: number; percentage: number; avgPoints?: number }> | null; data: AppData | null }) {
+    const [showPoints, setShowPoints] = useState(false);
+    
     if (!results || !data || results.length === 0) {
         return <div className="card p-4 text-muted-foreground">Run a simulation to see results.</div>;
     }
@@ -776,21 +824,38 @@ function ResultsPanel({ results, data }: { results: Array<{ driver: number; perc
 
     const top = sorted.slice(0, 5);
     return (
-        <div className="space-y-2">
-            {top.map((r) => (
-                <div key={r.driver} className="card p-3">
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 text-sm text-muted-foreground">#{r.driver}</div>
-                        <div className="flex-1">
-                            <div className="font-medium">{data.driverNames[r.driver] || `Driver #${r.driver}`}</div>
-                            <div className="h-2 mt-2 rounded bg-muted">
-                                <div className="h-2 rounded bg-green-500" style={{ width: `${r.percentage}%` }} />
+        <div className="space-y-3">
+            <div className="flex justify-end">
+                <button
+                    onClick={() => setShowPoints(!showPoints)}
+                    className="btn-secondary px-4 py-2 text-sm"
+                >
+                    {showPoints ? "Hide Points" : "Show Points"}
+                </button>
+            </div>
+            <div className="space-y-2">
+                {top.map((r) => (
+                    <div key={r.driver} className="card p-3">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 text-sm text-muted-foreground">#{r.driver}</div>
+                            <div className="flex-1">
+                                <div className="font-medium">{data.driverNames[r.driver] || `Driver #${r.driver}`}</div>
+                                <div className="h-2 mt-2 rounded bg-muted">
+                                    <div className="h-2 rounded bg-green-500" style={{ width: `${r.percentage}%` }} />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="w-16 text-right font-semibold">{r.percentage.toFixed(1)}%</div>
+                                {showPoints && (
+                                    <div className="w-20 text-right text-sm text-muted-foreground">
+                                        {r.avgPoints ?? 0} pts
+                                    </div>
+                                )}
                             </div>
                         </div>
-                        <div className="w-16 text-right font-semibold">{r.percentage.toFixed(1)}%</div>
                     </div>
-                </div>
-            ))}
+                ))}
+            </div>
         </div>
     );
 }
