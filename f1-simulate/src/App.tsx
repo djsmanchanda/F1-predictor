@@ -9,6 +9,9 @@ import {
   buildParameterizedURL,
   shortenURL,
   copyTextToClipboard,
+  extractSimulationCode,
+  resolveShortCode,
+  decodeCompressedScenarios,
   type SimulationType,
 } from "./lib/share";
 
@@ -565,12 +568,17 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
   const [selectedFormType, setSelectedFormType] = useState<"recent-form" | "momentum">("recent-form");
   const [lastSimType, setLastSimType] = useState<"standard" | "realistic" | "recent-form" | "momentum" | null>(null);
   const [showInfo, setShowInfo] = useState<string | null>(null);
+  const [showLoadBox, setShowLoadBox] = useState(false);
+  const [loadInput, setLoadInput] = useState('');
+  const [loadStatus, setLoadStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const simInfo = {
     standard: "Completely random race outcomes with equal probability for all drivers. No biases or patterns.",
     realistic: "Top 5 championship drivers have a higher chance of getting podiums, simulating more predictable outcomes.",
     "recent-form": "Analyzes recent race performance to weight probabilities. Use the unpredictability slider to control randomness vs form-based predictions.",
-    momentum: "Similar to Recent Form but emphasizes current trajectory. Lower unpredictability = stronger momentum effect."
+    momentum: "Similar to Recent Form but emphasizes current trajectory. Lower unpredictability = stronger momentum effect.",
+    load: "Load a shared simulation from a code or URL. Enter a short code (e.g., ABC123) or paste a full simulation URL."
   };
 
   const run = (type: "standard" | "realistic" | "recent-form" | "momentum") => {
@@ -616,9 +624,79 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
     return `${baseClass} ${selectedClass}`;
   };
 
+  const handleLoadSimulation = async () => {
+    if (!loadInput.trim() || !sim.data) return;
+    
+    setIsLoading(true);
+    setLoadStatus(null);
+
+    try {
+      const extracted = extractSimulationCode(loadInput);
+      
+      if (!extracted.code || !extracted.type) {
+        setLoadStatus({ type: 'error', message: 'Invalid simulation code or URL' });
+        setIsLoading(false);
+        return;
+      }
+
+      let sc2Code = extracted.code;
+
+      // If it's a short code, resolve it first
+      if (extracted.type === 'short') {
+        setLoadStatus({ type: 'info', message: 'Resolving short code...' });
+        const resolvedUrl = await resolveShortCode(extracted.code);
+        
+        if (!resolvedUrl) {
+          setLoadStatus({ type: 'error', message: 'Short code not found or expired' });
+          setIsLoading(false);
+          return;
+        }
+
+        // Extract sc2 from resolved URL
+        try {
+          const url = new URL(resolvedUrl);
+          const sc2Param = url.searchParams.get('sc2');
+          if (!sc2Param) {
+            setLoadStatus({ type: 'error', message: 'Invalid simulation data' });
+            setIsLoading(false);
+            return;
+          }
+          sc2Code = sc2Param;
+        } catch {
+          setLoadStatus({ type: 'error', message: 'Failed to parse resolved URL' });
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Decode the scenarios
+      const { scenarios, simulationType } = decodeCompressedScenarios(
+        sc2Code,
+        sim.remainingRaces,
+        sim.remainingSprints
+      );
+
+      // Load scenarios into the simulator
+      const total = sim.remainingRaces.length + sim.remainingSprints.length;
+      for (let i = 0; i < total; i++) {
+        sim.setScenarioList(i, scenarios[i] || []);
+      }
+
+      setLoadStatus({ type: 'success', message: `✓ Loaded ${Object.keys(scenarios).length} scenario(s) (${simulationType} mode)` });
+      setLoadInput('');
+      
+      // Keep success message visible
+    } catch (err) {
+      console.error('Load simulation error:', err);
+      setLoadStatus({ type: 'error', message: 'Failed to load simulation. Invalid format.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {(() => {
           const isSelected = lastSimType === "standard" && !showFormSelector;
           return (
@@ -743,8 +821,84 @@ function SimulatePanel(sim: ReturnType<typeof useF1Simulator>) {
             </button>
           );
         })()}
+        {(() => {
+          return (
+            <button
+              className="relative card p-4 text-left transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              data-selected={showLoadBox}
+              aria-pressed={showLoadBox}
+              disabled={busy || isLoading}
+              onClick={() => {
+                setShowFormSelector(false);
+                setShowLoadBox(!showLoadBox);
+              }}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <div className="font-semibold">{isLoading ? "⏳ Loading..." : "📥 Load"}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Import simulation</div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowInfo(showInfo === "load" ? null : "load"); }}
+                  className="text-muted-foreground hover:text-foreground text-sm px-1 transition-colors"
+                  title="More info"
+                >
+                  ⓘ
+                </button>
+              </div>
+              {showInfo === "load" && (
+                <div className="mt-2 pt-2 border-t border-border/50 text-xs text-muted-foreground">
+                  {simInfo.load}
+                </div>
+              )}
+            </button>
+          );
+        })()}
       </div>
 
+      {/* Load Simulation Box */}
+      <div 
+        className="overflow-hidden transition-all duration-300 ease-in-out"
+        style={{ 
+          maxHeight: showLoadBox ? '200px' : '0',
+          opacity: showLoadBox ? 1 : 0
+        }}
+      >
+        <div className="card p-4 space-y-3">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={loadInput}
+              onChange={(e) => setLoadInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLoadSimulation()}
+              placeholder="Enter code (e.g., ABC123) or paste URL"
+              className="flex-1 px-3 py-2 bg-muted border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              disabled={isLoading}
+            />
+            <button
+              onClick={handleLoadSimulation}
+              disabled={isLoading || !loadInput.trim() || !sim.data}
+              className="btn-primary px-6 whitespace-nowrap disabled:opacity-50"
+            >
+              {isLoading ? '⏳' : '▶️ Load'}
+            </button>
+          </div>
+          {loadStatus && (
+            <div className={`text-sm ${
+              loadStatus.type === 'success' ? 'text-green-500' : 
+              loadStatus.type === 'error' ? 'text-red-500' : 
+              'text-yellow-500'
+            }`}>
+              {loadStatus.message}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            💡 Enter a simulation code or paste a URL to load scenarios. You can try unlimited times.
+          </p>
+        </div>
+      </div>
+
+      {/* Form Selector for Recent Form / Momentum */}
       <div 
         className="overflow-hidden transition-all duration-300 ease-in-out"
         style={{ 
@@ -873,6 +1027,7 @@ function ShareButtons({
 }) {
   const [shareStatus, setShareStatus] = useState<string>('');
   const [isSharing, setIsSharing] = useState(false);
+  const [lastShortCode, setLastShortCode] = useState<string | null>(null);
 
   const hasScenarios = Object.keys(scenarios).length > 0;
 
@@ -881,6 +1036,7 @@ function ShareButtons({
     
     setIsSharing(true);
     setShareStatus('');
+    setLastShortCode(null);
 
     try {
       // Ctrl+click = copy full parameterized URL
@@ -893,16 +1049,40 @@ function ShareButtons({
         const compressedUrl = buildShareURL(scenarios, remainingRaces, remainingSprints, simulationType);
         try {
           const shortUrl = await shortenURL(compressedUrl);
+          
+          // Extract short code from the URL (abc123)
+          try {
+            const urlObj = new URL(shortUrl);
+            const match = urlObj.pathname.match(/\/s\/([a-zA-Z0-9]+)/);
+            if (match && match[1]) {
+              setLastShortCode(match[1]);
+            }
+          } catch {
+            // Couldn't parse, skip code extraction
+          }
+          
           await copyTextToClipboard(shortUrl);
           setShareStatus('✓ Link copied!');
         } catch (err) {
           console.error('Shortening failed, using compressed URL:', err);
+          
+          // Fallback: extract the compressed data as the "code"
+          try {
+            const urlObj = new URL(compressedUrl);
+            const data = urlObj.searchParams.get('data');
+            if (data) {
+              setLastShortCode(data);
+            }
+          } catch {
+            // Couldn't extract data
+          }
+          
           await copyTextToClipboard(compressedUrl);
           setShareStatus('✓ Link copied!');
         }
       }
 
-      setTimeout(() => setShareStatus(''), 3000);
+      setTimeout(() => setShareStatus(''), 5000);
     } catch (err) {
       console.error('Share failed:', err);
       setShareStatus('✗ Failed to copy');
@@ -912,29 +1092,57 @@ function ShareButtons({
     }
   };
 
-  return (
-    <div className="flex gap-3 items-center">
-      <button
-        onClick={handleShare}
-        disabled={!hasScenarios || isSharing}
-        className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        title={hasScenarios ? "Click to copy short link, Ctrl+Click for full URL" : "Run a simulation first"}
-      >
-        {isSharing ? '⏳ Creating link...' : '🔗 Share'}
-      </button>
-      
-      <button
-        disabled
-        className="btn-secondary opacity-30 cursor-not-allowed"
-        title="Coming soon"
-      >
-        𝕏 Share to X
-      </button>
+  const copyShortCode = async () => {
+    if (lastShortCode) {
+      await copyTextToClipboard(lastShortCode);
+      setShareStatus('✓ Code copied!');
+      setTimeout(() => setShareStatus(''), 3000);
+    }
+  };
 
-      {shareStatus && (
-        <span className={`text-sm ${shareStatus.startsWith('✓') ? 'text-green-500' : 'text-red-500'}`}>
-          {shareStatus}
-        </span>
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-3 items-center flex-wrap">
+        <button
+          onClick={handleShare}
+          disabled={!hasScenarios || isSharing}
+          className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          title={hasScenarios ? "Click to copy short link, Ctrl+Click for full URL" : "Run a simulation first"}
+        >
+          {isSharing ? '⏳ Creating link...' : '🔗 Share'}
+        </button>
+        
+        <button
+          disabled
+          className="btn-secondary opacity-30 cursor-not-allowed"
+          title="Coming soon"
+        >
+          𝕏 Share to X
+        </button>
+
+        {shareStatus && (
+          <span className={`text-sm ${shareStatus.startsWith('✓') ? 'text-green-500' : 'text-red-500'}`}>
+            {shareStatus}
+          </span>
+        )}
+      </div>
+      
+      {lastShortCode && (
+        <div className="card p-3 bg-muted/50 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Share sim code:</span>
+            <code className="text-sm font-mono bg-background px-2 py-1 rounded border border-border truncate">
+              {lastShortCode}
+            </code>
+          </div>
+          <button
+            onClick={copyShortCode}
+            className="btn-secondary px-3 py-1 text-xs whitespace-nowrap"
+            title="Copy code to clipboard"
+          >
+            📋 Copy
+          </button>
+        </div>
       )}
     </div>
   );

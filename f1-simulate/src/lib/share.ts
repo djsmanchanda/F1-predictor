@@ -363,6 +363,75 @@ export async function copyTextToClipboard(text: string): Promise<void> {
 }
 
 /**
+ * Extract short code or sc2 parameter from URL or code string
+ * Supports:
+ * - Short URL: /s/ABC123 or https://domain.com/s/ABC123 or localhost:5173/s/ABC123
+ * - Parameterized URL: ?sc2=base64string
+ * - Just the code: ABC123 or base64string
+ */
+export function extractSimulationCode(input: string): { type: 'short' | 'compressed' | null; code: string | null } {
+  if (!input || typeof input !== 'string') return { type: null, code: null };
+  
+  const trimmed = input.trim();
+  
+  // Try to parse as URL first (add protocol if missing)
+  let urlToParse = trimmed;
+  if (!trimmed.match(/^https?:\/\//i)) {
+    // Check if it looks like a URL without protocol (contains domain/localhost)
+    if (trimmed.includes('/') || trimmed.includes('localhost') || trimmed.match(/^[\w.-]+\.\w+/)) {
+      urlToParse = 'http://' + trimmed;
+    }
+  }
+  
+  try {
+    const url = new URL(urlToParse);
+    
+    // Check for /s/[code] short URL
+    const match = url.pathname.match(/\/s\/([a-zA-Z0-9]+)/);
+    if (match && match[1]) {
+      return { type: 'short', code: match[1] };
+    }
+    
+    // Check for sc2 parameter (compressed format)
+    const sc2 = url.searchParams.get('sc2');
+    if (sc2) {
+      return { type: 'compressed', code: sc2 };
+    }
+  } catch {
+    // Not a valid URL, treat as raw code
+  }
+  
+  // Check if it's just a short code (alphanumeric, typically 6-8 chars)
+  if (/^[a-zA-Z0-9]{6,10}$/.test(trimmed)) {
+    return { type: 'short', code: trimmed };
+  }
+  
+  // Check if it's a base64 string (compressed scenario)
+  if (/^[A-Za-z0-9+/]+=*$/.test(trimmed) && trimmed.length > 10) {
+    return { type: 'compressed', code: trimmed };
+  }
+  
+  return { type: null, code: null };
+}
+
+/**
+ * Resolve short code to full URL
+ */
+export async function resolveShortCode(code: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/s/${code}`, { redirect: 'manual' });
+    if (res.status === 302 || res.status === 301) {
+      const location = res.headers.get('Location');
+      return location;
+    }
+    return null;
+  } catch (err) {
+    console.error('Failed to resolve short code:', err);
+    return null;
+  }
+}
+
+/**
  * Clean URL for display (shorten for UI)
  */
 export function cleanUrlForDisplay(url: string): string {
