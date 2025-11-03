@@ -83,7 +83,7 @@ export default function App() {
           </Section>
 
           <Section title="Path to Victory (beta)" subtitle="See what needs to happen for a driver to win">
-            <div className="card p-4 text-muted-foreground">Coming soon…</div>
+            <PathToVictoryPanel {...sim} />
           </Section>
 
           <footer className="container-page pt-8 pb-12 text-sm text-muted-foreground">
@@ -1148,6 +1148,190 @@ function ShareButtons({
   );
 }
 
+function PathToVictoryPanel({ data, remainingRaces, remainingSprints }: { data: AppData | null; remainingRaces: Array<{ round: number }>; remainingSprints: Array<{ round: number }> }) {
+  const [selectedDriver, setSelectedDriver] = useState<number | null>(null);
+  const [pathResult, setPathResult] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  if (!data) return <div className="card p-4 text-muted-foreground">Loading data...</div>;
+
+  const top5Drivers = Object.entries(data.currentPoints)
+    .map(([k, v]) => [parseInt(k), v] as [number, number])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const handleCalculate = async (driver: number) => {
+    if (!data) return;
+    
+    setSelectedDriver(driver);
+    setLoading(true);
+    setPathResult(null);
+    
+    try {
+      // Import the calculator
+      const { calculatePathToVictory, calculateDriverStats } = await import('./lib/pathToVictory');
+      
+      // Get raw standings if available
+      const rawStandings = (data as any).rawStandings || [];
+      const { wins, podiums } = calculateDriverStats(rawStandings);
+      
+      const result = calculatePathToVictory(
+        driver,
+        data,
+        remainingRaces,
+        remainingSprints,
+        wins,
+        podiums
+      );
+      
+      setPathResult(result);
+    } catch (err) {
+      console.error('Path to victory calculation error:', err);
+      setPathResult({
+        driver: driver,
+        driverName: data.driverNames[driver] || `Driver #${driver}`,
+        isPossible: false,
+        reason: 'Calculation error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Driver Selection - Top 5 Buttons */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {top5Drivers.map(([driver, points], index) => {
+          const isSelected = selectedDriver === driver;
+          return (
+            <button
+              key={driver}
+              onClick={() => handleCalculate(driver)}
+              disabled={loading}
+              className={`card p-4 text-left transition-all duration-200 hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed ${
+                isSelected ? 'ring-2 ring-primary shadow-lg shadow-primary/20 bg-neutral-700/30' : ''
+              }`}
+              data-selected={isSelected}
+              aria-pressed={isSelected}
+            >
+              <div className="text-xs text-muted-foreground mb-1">P{index + 1}</div>
+              <div className="font-semibold text-lg">#{driver}</div>
+              <div className="text-sm truncate">{data.driverNames[driver]}</div>
+              <div className="text-xs text-muted-foreground mt-1">{points} pts</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Loading State */}
+      {loading && (
+        <div className="card p-8 text-center">
+          <div className="text-4xl mb-2">⏳</div>
+          <p className="text-muted-foreground">Calculating path to victory...</p>
+        </div>
+      )}
+
+      {/* Results */}
+      {pathResult && !loading && (
+        <div className="space-y-4">
+          {!pathResult.isPossible ? (
+            <div className="card p-4 bg-red-900/20 border-red-500/30">
+              <h3 className="font-semibold text-lg mb-2">❌ No Path to Victory</h3>
+              <p className="text-muted-foreground">{pathResult.reason}</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary */}
+              <div className="card p-4 bg-green-900/20 border-green-500/30">
+                <h3 className="font-semibold text-lg mb-2">✅ Path to Victory Found</h3>
+                <p className="text-xl font-bold text-green-400 mb-3">{pathResult.requirements.description}</p>
+                
+                <div className="space-y-2">
+                  <h4 className="font-medium text-sm text-muted-foreground">What {pathResult.driverName} needs:</h4>
+                  <ul className="space-y-1">
+                    {pathResult.requirements.driverNeeds.map((need: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-green-500">•</span>
+                        <span>{need}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Rival Constraints */}
+              {pathResult.requirements.rivalConstraints.length > 0 && (
+                <div className="card p-4">
+                  <h4 className="font-semibold mb-3">Rival Constraints</h4>
+                  <div className="space-y-3">
+                    {pathResult.requirements.rivalConstraints.map((rival: any, i: number) => (
+                      <div key={i} className="border-l-4 border-yellow-500/50 pl-3">
+                        <div className="font-medium">
+                          #{rival.driver} {rival.driverName}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Max {rival.maxPoints} points
+                        </div>
+                        <ul className="text-sm space-y-1 mt-1">
+                          {rival.constraints.map((c: string, j: number) => (
+                            <li key={j} className="text-yellow-300">• {c}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Scenario Table */}
+              {pathResult.requirements.scenarioTable.length > 0 && (
+                <div className="card p-4 overflow-x-auto">
+                  <h4 className="font-semibold mb-3">Scenario Breakdown</h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-2 px-2">Driver</th>
+                        <th className="text-right py-2 px-2">Current Pts</th>
+                        <th className="text-right py-2 px-2">Gained Pts</th>
+                        <th className="text-right py-2 px-2">Final Pts</th>
+                        <th className="text-right py-2 px-2">Current Wins</th>
+                        <th className="text-right py-2 px-2">Gained Wins</th>
+                        <th className="text-right py-2 px-2">Final Wins</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pathResult.requirements.scenarioTable.map((row: any, i: number) => (
+                        <tr key={i} className={`border-b border-border/50 ${row.driver === pathResult.driver ? 'bg-green-900/20' : ''}`}>
+                          <td className="py-2 px-2 font-medium">
+                            #{row.driver} {row.driverName}
+                          </td>
+                          <td className="text-right py-2 px-2">{row.currentPoints}</td>
+                          <td className="text-right py-2 px-2 text-green-400">+{row.gainedPoints}</td>
+                          <td className="text-right py-2 px-2 font-bold">{row.finalPoints}</td>
+                          <td className="text-right py-2 px-2">{row.currentWins}</td>
+                          <td className="text-right py-2 px-2 text-green-400">+{row.gainedWins}</td>
+                          <td className="text-right py-2 px-2 font-bold">{row.finalWins}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {!pathResult && !loading && (
+        <div className="card p-8 text-center text-muted-foreground">
+          <div className="text-4xl mb-2">🎯</div>
+          <p>Select a top 5 driver to calculate their path to championship victory</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PointsProgression({ data }: { data: AppData }) {
   const [mode, setMode] = useState<'all'|'top5'|'battle3'>('all');
