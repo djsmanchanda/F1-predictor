@@ -93,7 +93,7 @@ export default function App() {
               </div>
               <div className="flex items-center gap-4">
                 <a className="btn-secondary" href="https://buymeacoffee.com/djsmanchanda" target="_blank" rel="noreferrer">☕ Support this project</a>
-                <a className="underline-offset-4 hover:underline" href="https://github.com/djsmanchanda/f1-website" target="_blank" rel="noreferrer">Contribute</a>
+                <a className="underline-offset-4 hover:underline" href="https://github.com/djsmanchanda/F1-predictor" target="_blank" rel="noreferrer">Contribute</a>
               </div>
             </div>
           </footer>
