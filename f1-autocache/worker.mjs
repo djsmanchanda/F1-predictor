@@ -203,12 +203,13 @@ function rowsToJSON(headers, rows) {
 
 async function computeAndSave(env, year) {
   const [races, drivers] = await Promise.all([getRaces(year), getDrivers(year)]);
-  const { rounds, raceCompleted, sprintCompleted, eligible } = buildCompletedRounds(races);
+  const { rounds } = buildCompletedRounds(races);
 
-  const completedRounds = raceCompleted.map(r => r.round);
   const perRoundPoints = [];
+  const roundsMeta = [];
+  const occurred = [];
+  const sprints = [];
 
-  // Also build breakdown data in same pass (driver map with separate race/sprint points)
   const drvMap = new Map(drivers.map(d => [d.key, { number: d.number || "", name: d.name, team: "", racePoints: {}, sprintPoints: {} }]));
   const ensureDriver = (key, displayName) => {
     if (!drvMap.has(key)) {
@@ -217,116 +218,167 @@ async function computeAndSave(env, year) {
     return drvMap.get(key);
   };
 
-  for (const r of eligible) {
-    const [sprintRes, raceRes] = await Promise.all([
-      getSprintResults(year, r.round),
-      getRaceResults(year, r.round)
+  let sprintCounter = 0;
+  let lastCompletedRound = 0;
+  let completedCount = 0;
+  let lastStageOrdinal = 0;
+
+  for (let idx = 0; idx < rounds.length; idx++) {
+    const roundInfo = rounds[idx];
+    const roundNum = Number(roundInfo.round);
+    const raceName = roundInfo.raceName;
+    const raceTimeISO = roundInfo.raceTime instanceof Date ? roundInfo.raceTime.toISOString() : String(roundInfo.raceTime ?? "");
+    const sprintTimeISO = roundInfo.sprintTime instanceof Date ? roundInfo.sprintTime.toISOString() : (roundInfo.sprintTime ? String(roundInfo.sprintTime) : null);
+
+    const [sprintResRaw, raceResRaw] = await Promise.all([
+      getSprintResults(year, roundNum).catch(() => []),
+      getRaceResults(year, roundNum).catch(() => [])
     ]);
+
+    const [ovSprint, ovRace] = await Promise.all([
+      getOverride(env, year, roundNum, "sprint"),
+      getOverride(env, year, roundNum, "race")
+    ]);
+
+    const sprintRes = Array.isArray(sprintResRaw) ? sprintResRaw : [];
+    const raceRes = Array.isArray(raceResRaw) ? raceResRaw : [];
+    const hasSprintRes = sprintRes.length > 0;
+    const hasRaceRes = raceRes.length > 0;
+    const sprintOverrideActive = Array.isArray(ovSprint) && ovSprint.length > 0;
+    const raceOverrideActive = Array.isArray(ovRace) && ovRace.length > 0;
+    const useSprintOverride = !hasSprintRes && sprintOverrideActive;
+    const useRaceOverride = !hasRaceRes && raceOverrideActive;
+
+    const hasSprintData = hasSprintRes || useSprintOverride;
+    const hasRaceData = hasRaceRes || useRaceOverride;
+
+    if (!hasSprintData && !hasRaceData) {
+      roundsMeta.push({
+        round: roundNum,
+        raceName,
+        status: "upcoming",
+        dateTimeUTC: raceTimeISO,
+        sprintDateTimeUTC: sprintTimeISO,
+        override: { sprint: false, race: false }
+      });
+
+      for (let j = idx + 1; j < rounds.length; j++) {
+        const future = rounds[j];
+        const futureRaceTime = future.raceTime instanceof Date ? future.raceTime.toISOString() : String(future.raceTime ?? "");
+        const futureSprintTime = future.sprintTime instanceof Date ? future.sprintTime.toISOString() : (future.sprintTime ? String(future.sprintTime) : null);
+        roundsMeta.push({
+          round: future.round,
+          raceName: future.raceName,
+          status: "upcoming",
+          dateTimeUTC: futureRaceTime,
+          sprintDateTimeUTC: futureSprintTime,
+          override: { sprint: false, race: false }
+        });
+      }
+      break;
+    }
+
+    if (hasSprintRes && sprintOverrideActive) {
+      await clearOverride(env, year, roundNum, "sprint");
+    }
+    if (hasRaceRes && raceOverrideActive) {
+      await clearOverride(env, year, roundNum, "race");
+    }
 
     const pointsByKey = new Map();
 
-    // Load overrides if needed
-    const [ovSprint, ovRace] = await Promise.all([
-      getOverride(env, year, r.round, "sprint"),
-      getOverride(env, year, r.round, "race")
-    ]);
-
-    // Sprint points: prefer API, otherwise override
-    if (Array.isArray(sprintRes) && sprintRes.length) {
-      for (const s of sprintRes) {
-        const d = s.Driver || {};
+    if (hasSprintRes) {
+      for (const entry of sprintRes) {
+        const d = entry.Driver || {};
         const key = (d.code || d.driverId || fullName(d)).toLowerCase();
-        const pts = Number(s.points ?? "0") || 0;
-        pointsByKey.set(key, (pointsByKey.get(key) || 0) + pts);
-        // Also update breakdown
-        const rec = ensureDriver(key, fullName(d));
-        const team = s.Constructor?.name || s.constructor?.name || "";
-        if (team && !rec.team) rec.team = team;
-        rec.sprintPoints[r.round] = (rec.sprintPoints[r.round] || 0) + pts;
-      }
-      if (ovSprint && ovSprint.length) {
-        await clearOverride(env, year, r.round, "sprint");
-      }
-    } else if (ovSprint && ovSprint.length) {
-      for (const e of ovSprint) {
-        const key = normalizeEntryKey(e, drivers);
         if (!key) continue;
-        const pts = Number(e.points) || 0;
+        const pts = Number(entry.points ?? "0") || 0;
         pointsByKey.set(key, (pointsByKey.get(key) || 0) + pts);
-        // Also update breakdown
-        const rec = ensureDriver(key);
-        rec.sprintPoints[r.round] = (rec.sprintPoints[r.round] || 0) + pts;
+        const rec = ensureDriver(key, fullName(d));
+        const team = entry.Constructor?.name || entry.constructor?.name || "";
+        if (team && !rec.team) rec.team = team;
+        rec.sprintPoints[roundNum] = (rec.sprintPoints[roundNum] || 0) + pts;
+      }
+    } else if (useSprintOverride) {
+      for (const entry of ovSprint) {
+        const key = normalizeEntryKey(entry, drivers);
+        if (!key) continue;
+        const pts = Number(entry.points) || 0;
+        pointsByKey.set(key, (pointsByKey.get(key) || 0) + pts);
+        const rec = ensureDriver(key, entry.name || entry.code || key);
+        rec.sprintPoints[roundNum] = (rec.sprintPoints[roundNum] || 0) + pts;
       }
     }
 
-    // Race points: prefer API, otherwise override
-    if (Array.isArray(raceRes) && raceRes.length) {
-      for (const s of raceRes) {
-        const d = s.Driver || {};
+    if (hasRaceRes) {
+      for (const entry of raceRes) {
+        const d = entry.Driver || {};
         const key = (d.code || d.driverId || fullName(d)).toLowerCase();
-        const pts = Number(s.points ?? "0") || 0;
-        pointsByKey.set(key, (pointsByKey.get(key) || 0) + pts);
-        // Also update breakdown
-        const rec = ensureDriver(key, fullName(d));
-        const team = s.Constructor?.name || s.constructor?.name || "";
-        if (team && !rec.team) rec.team = team;
-        rec.racePoints[r.round] = (rec.racePoints[r.round] || 0) + pts;
-      }
-      if (ovRace && ovRace.length) {
-        await clearOverride(env, year, r.round, "race");
-      }
-    } else if (ovRace && ovRace.length) {
-      for (const e of ovRace) {
-        const key = normalizeEntryKey(e, drivers);
         if (!key) continue;
-        const pts = Number(e.points) || 0;
+        const pts = Number(entry.points ?? "0") || 0;
         pointsByKey.set(key, (pointsByKey.get(key) || 0) + pts);
-        // Also update breakdown
-        const rec = ensureDriver(key);
-        rec.racePoints[r.round] = (rec.racePoints[r.round] || 0) + pts;
+        const rec = ensureDriver(key, fullName(d));
+        const team = entry.Constructor?.name || entry.constructor?.name || "";
+        if (team && !rec.team) rec.team = team;
+        rec.racePoints[roundNum] = (rec.racePoints[roundNum] || 0) + pts;
+      }
+    } else if (useRaceOverride) {
+      for (const entry of ovRace) {
+        const key = normalizeEntryKey(entry, drivers);
+        if (!key) continue;
+        const pts = Number(entry.points) || 0;
+        pointsByKey.set(key, (pointsByKey.get(key) || 0) + pts);
+        const rec = ensureDriver(key, entry.name || entry.code || key);
+        rec.racePoints[roundNum] = (rec.racePoints[roundNum] || 0) + pts;
       }
     }
 
-    // Fill any missing driver permanentNumber (first time we see them)
-    for (const [key] of pointsByKey) {
-      const drv = drivers.find(x => x.key === key);
-      if (!drv) continue;
-      // keep as-is; number is already stored in drivers map
+    perRoundPoints.push({ round: roundNum, raceName, pointsByKey });
+
+    const status = hasRaceData ? "completed" : "after-sprint";
+    roundsMeta.push({
+      round: roundNum,
+      raceName,
+      status,
+      dateTimeUTC: raceTimeISO,
+      sprintDateTimeUTC: sprintTimeISO,
+      override: {
+        sprint: useSprintOverride && !hasSprintRes,
+        race: useRaceOverride && !hasRaceRes
+      }
+    });
+
+    occurred.push({
+      round: roundNum,
+      raceName,
+      status,
+      hasSprint: !!sprintTimeISO
+    });
+
+    if (hasSprintData) {
+      sprintCounter += 1;
+      sprints.push({ index: sprintCounter, round: roundNum, raceName });
     }
 
-    const raceName = rounds.find(x => x.round === r.round)?.raceName || `Round ${r.round}`;
-    perRoundPoints.push({ round: r.round, raceName, pointsByKey });
+    if (hasRaceData) {
+      completedCount += 1;
+      lastCompletedRound = roundNum;
+    }
+
+    const stageOrdinal = roundNum * 10 + (hasRaceData ? 2 : 1);
+    if (stageOrdinal > lastStageOrdinal) {
+      lastStageOrdinal = stageOrdinal;
+    }
   }
-
-  // Ensure order by round
-  perRoundPoints.sort((a,b) => a.round - b.round);
 
   const { headers, rows } = accumulate(drivers, perRoundPoints);
 
   const csv = rowsToCSV(headers, rows);
   const json = JSON.stringify(rowsToJSON(headers, rows));
-  // Build metadata with override flags
-  const roundsMeta = [];
-  for (const r of rounds) {
-    const raceDone = completedRounds.includes(r.round);
-    const sprintDone = sprintCompleted.some(x => x.round === r.round);
-    const [oS, oR] = await Promise.all([
-      getOverride(env, year, r.round, "sprint"),
-      getOverride(env, year, r.round, "race")
-    ]);
-    roundsMeta.push({
-      round: r.round,
-      raceName: r.raceName,
-      status: raceDone ? "completed" : (sprintDone ? "after-sprint" : "upcoming"),
-      dateTimeUTC: r.raceTime.toISOString?.() || toUTCDate(r.date, r.time).toISOString(),
-      sprintDateTimeUTC: r.sprintTime?.toISOString?.(),
-      override: { sprint: !!(oS && oS.length), race: !!(oR && oR.length) }
-    });
-  }
   const meta = JSON.stringify({
     year,
     lastUpdated: new Date().toISOString(),
-    roundsCompleted: raceCompleted.length,
+    roundsCompleted: completedCount,
     roundsTotal: rounds.length,
     rounds: roundsMeta
   });
@@ -335,76 +387,30 @@ async function computeAndSave(env, year) {
   await env.F1_KV.put(CSV_KEY(year), csv);
   await env.F1_KV.put(META_KEY(year), meta);
 
-  // Also cache rounds and breakdown docs (breakdown already built in same pass above)
-  const occurred = eligible.map(x => ({
-    round: x.round,
-    raceName: x.raceName,
-    status: (raceCompleted.some(a => a.round === x.round)) ? "completed" : "after-sprint",
-    hasSprint: !!x.sprintTime
-  }));
-  const sprints = sprintCompleted.sort((a,b) => a.round - b.round).map((x, i) => ({ index: i + 1, round: x.round, raceName: x.raceName }));
   const roundsDoc = JSON.stringify({ year, rounds: occurred, sprints });
   await env.F1_KV.put(ROUNDS_KEY(year), roundsDoc);
 
-  // Build breakdown payload from drvMap
   const driversArr = Array.from(drvMap.values()).map(rec => {
-    const totalRace = Object.values(rec.racePoints).reduce((a,b) => a + b, 0);
-    const totalSprint = Object.values(rec.sprintPoints).reduce((a,b) => a + b, 0);
+    const totalRace = Object.values(rec.racePoints).reduce((a, b) => a + b, 0);
+    const totalSprint = Object.values(rec.sprintPoints).reduce((a, b) => a + b, 0);
     return { ...rec, totalRacePoints: totalRace, totalSprintPoints: totalSprint, totalPoints: totalRace + totalSprint };
-  }).sort((a,b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
+  }).sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
   const breakdownDoc = JSON.stringify({ year, rounds: occurred, sprints, drivers: driversArr });
   await env.F1_KV.put(BREAKDOWN_KEY(year), breakdownDoc);
 
-  // Maintain legacy last-round (last fully completed race)
-  await env.F1_KV.put(LAST_KEY(year), String(Math.max(0, ...completedRounds)));
-  // And update last-stage (round*10 + stage) where stage: 2 if race done, else 1 if sprint done, else 0
-  const lastStageOrdinal = Math.max(
-    0,
-    ...rounds.map(r => {
-      const raceDone = completedRounds.includes(r.round);
-      const sprintDone = sprintCompleted.some(x => x.round === r.round);
-      const stage = raceDone ? 2 : (sprintDone ? 1 : 0);
-      return r.round * 10 + stage;
-    })
-  );
+  await env.F1_KV.put(LAST_KEY(year), String(lastCompletedRound));
   await env.F1_KV.put(LAST_STAGE_KEY(year), String(lastStageOrdinal));
 
   return { csv, json, meta };
 }
 
 async function maybeUpdate(env, year) {
-  // Decide if there is a newly eligible stage since last update (sprint or race)
-  const races = await getRaces(year);
-  const { raceCompleted, sprintCompleted, eligible } = buildCompletedRounds(races);
-
-  // Legacy check: fully completed race round increased
-  const lastRound = Number(await env.F1_KV.get(LAST_KEY(year))) || 0;
-  const maxCompletedRound = Math.max(0, ...raceCompleted.map(r => r.round));
-  if (maxCompletedRound > lastRound) {
-    return computeAndSave(env, year);
+  try {
+    return await computeAndSave(env, year);
+  } catch (err) {
+    console.error('maybeUpdate error', err);
+    return null;
   }
-
-  // New check: stage advanced (e.g., sprint finished for a round before race)
-  const lastStage = Number(await env.F1_KV.get(LAST_STAGE_KEY(year))) || 0;
-  const currentStage = Math.max(
-    0,
-    ...eligible.map(r => {
-      const raceDone = raceCompleted.some(x => x.round === r.round);
-      const sprintDone = sprintCompleted.some(x => x.round === r.round);
-      const stage = raceDone ? 2 : (sprintDone ? 1 : 0);
-      return r.round * 10 + stage;
-    })
-  );
-  if (currentStage > lastStage) {
-    return computeAndSave(env, year);
-  }
-
-  // Also refresh if nothing in KV yet but there's at least some eligible data
-  const hasCSV = await env.F1_KV.get(CSV_KEY(year));
-  if (!hasCSV && eligible.length) {
-    return computeAndSave(env, year);
-  }
-  return null;
 }
 
 export default {

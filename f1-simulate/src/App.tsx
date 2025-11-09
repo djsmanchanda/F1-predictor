@@ -93,7 +93,7 @@ export default function App() {
               </div>
               <div className="flex items-center gap-4">
                 <a className="btn-secondary" href="https://buymeacoffee.com/djsmanchanda" target="_blank" rel="noreferrer">☕ Support this project</a>
-                <a className="underline-offset-4 hover:underline" href="https://github.com/djsmanchanda/F1-predictor" target="_blank" rel="noreferrer">Contribute</a>
+                <a className="underline-offset-4 hover:underline" href="https://github.com/djsmanchanda/f1-website" target="_blank" rel="noreferrer">Contribute</a>
               </div>
             </div>
           </footer>
@@ -1148,6 +1148,12 @@ function ShareButtons({
   );
 }
 
+// Convert snake_case tokens into human readable labels for chips.
+function formatLabel(value?: string): string {
+  if (!value) return "Unknown";
+  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function PathToVictoryPanel({ data, remainingRaces, remainingSprints }: { data: AppData | null; remainingRaces: Array<{ round: number }>; remainingSprints: Array<{ round: number }> }) {
   const [selectedDriver, setSelectedDriver] = useState<number | null>(null);
   const [pathResult, setPathResult] = useState<any | null>(null);
@@ -1160,6 +1166,8 @@ function PathToVictoryPanel({ data, remainingRaces, remainingSprints }: { data: 
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
+  const scenario = pathResult?.scenario;
+
   const handleCalculate = async (driver: number) => {
     if (!data) return;
     
@@ -1169,7 +1177,7 @@ function PathToVictoryPanel({ data, remainingRaces, remainingSprints }: { data: 
     
     try {
       // Import the calculator
-      const { calculatePathToVictory, calculateDriverStats } = await import('./lib/pathToVictory');
+  const { calculatePathToVictory, calculateDriverStats } = await import('./lib/pathToVictory.ts');
       
       // Get raw standings if available
       const rawStandings = (data as any).rawStandings || [];
@@ -1244,13 +1252,28 @@ function PathToVictoryPanel({ data, remainingRaces, remainingSprints }: { data: 
             <>
               {/* Summary */}
               <div className="card p-4 bg-green-900/20 border-green-500/30">
-                <h3 className="font-semibold text-lg mb-2">✅ Path to Victory Found</h3>
-                <p className="text-xl font-bold text-green-400 mb-3">{pathResult.requirements.description}</p>
-                
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="font-semibold text-lg">✅ Path to Victory Found</h3>
+                    {scenario?.difficulty ? (
+                      <span className="inline-flex items-center gap-2 rounded-full bg-neutral-800/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+                        <span>{scenario.difficulty.icon}</span>
+                        <span>{scenario.difficulty.text}</span>
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-xl font-bold text-green-400">
+                    {scenario?.label ?? "Scenario identified"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Currently P{pathResult.currentPosition} on {pathResult.currentPoints} pts · Max achievable {pathResult.maxPossible} pts
+                  </p>
+                </div>
+
+                <div className="mt-4 space-y-2">
                   <h4 className="font-medium text-sm text-muted-foreground">What {pathResult.driverName} needs:</h4>
                   <ul className="space-y-1">
-                    {pathResult.requirements.driverNeeds.map((need: string, i: number) => (
+                    {(scenario?.driverNeeds ?? []).map((need: string, i: number) => (
                       <li key={i} className="flex items-start gap-2">
                         <span className="text-green-500">•</span>
                         <span>{need}</span>
@@ -1261,61 +1284,41 @@ function PathToVictoryPanel({ data, remainingRaces, remainingSprints }: { data: 
               </div>
 
               {/* Rival Constraints */}
-              {pathResult.requirements.rivalConstraints.length > 0 && (
+              {scenario && scenario.rivalConstraints.length > 0 && (
                 <div className="card p-4">
                   <h4 className="font-semibold mb-3">Rival Constraints</h4>
                   <div className="space-y-3">
-                    {pathResult.requirements.rivalConstraints.map((rival: any, i: number) => (
-                      <div key={i} className="border-l-4 border-yellow-500/50 pl-3">
-                        <div className="font-medium">
-                          #{rival.driver} {rival.driverName}
+                    {scenario.rivalConstraints.map((rival: any, i: number) => {
+                      const dropText = rival.pointsToDrop > 0
+                        ? `${rival.pointsToDrop} pts must be surrendered`
+                        : "No drop required";
+                      return (
+                        <div key={i} className="border-l-4 border-yellow-500/50 pl-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-medium">
+                              #{rival.driver} {rival.driverName}
+                            </div>
+                            <div className="flex gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                              <span className="rounded bg-neutral-800/70 px-2 py-1">{formatLabel(rival.severity)}</span>
+                              <span className="rounded bg-neutral-800/70 px-2 py-1">Risk {formatLabel(rival.riskLevel)}</span>
+                            </div>
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Keep to ≤ {rival.maxPointsAllowed} pts ({dropText})
+                          </div>
+                          <div className="text-sm mt-2">{rival.strategy}</div>
+                          <ul className="text-sm space-y-1 mt-2">
+                            {(rival.conditions || []).map((c: string, j: number) => (
+                              <li key={`cond-${j}`} className="text-yellow-300">• {c}</li>
+                            ))}
+                            {(rival.requiredFinishes || []).map((req: any, j: number) => (
+                              <li key={`req-${j}`} className="text-yellow-300">• {req.description}</li>
+                            ))}
+                          </ul>
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          Max {rival.maxPoints} points
-                        </div>
-                        <ul className="text-sm space-y-1 mt-1">
-                          {rival.constraints.map((c: string, j: number) => (
-                            <li key={j} className="text-yellow-300">• {c}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                </div>
-              )}
-
-              {/* Scenario Table */}
-              {pathResult.requirements.scenarioTable.length > 0 && (
-                <div className="card p-4 overflow-x-auto">
-                  <h4 className="font-semibold mb-3">Scenario Breakdown</h4>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-2 px-2">Driver</th>
-                        <th className="text-right py-2 px-2">Current Pts</th>
-                        <th className="text-right py-2 px-2">Gained Pts</th>
-                        <th className="text-right py-2 px-2">Final Pts</th>
-                        <th className="text-right py-2 px-2">Current Wins</th>
-                        <th className="text-right py-2 px-2">Gained Wins</th>
-                        <th className="text-right py-2 px-2">Final Wins</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pathResult.requirements.scenarioTable.map((row: any, i: number) => (
-                        <tr key={i} className={`border-b border-border/50 ${row.driver === pathResult.driver ? 'bg-green-900/20' : ''}`}>
-                          <td className="py-2 px-2 font-medium">
-                            #{row.driver} {row.driverName}
-                          </td>
-                          <td className="text-right py-2 px-2">{row.currentPoints}</td>
-                          <td className="text-right py-2 px-2 text-green-400">+{row.gainedPoints}</td>
-                          <td className="text-right py-2 px-2 font-bold">{row.finalPoints}</td>
-                          <td className="text-right py-2 px-2">{row.currentWins}</td>
-                          <td className="text-right py-2 px-2 text-green-400">+{row.gainedWins}</td>
-                          <td className="text-right py-2 px-2 font-bold">{row.finalWins}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               )}
             </>
