@@ -1,6 +1,6 @@
 # F1 Data & Simulation Suite
 
-A comprehensive Formula 1 data suite featuring a production-ready caching Worker and web-based championship simulator.
+A comprehensive Formula 1 data suite featuring a production-ready caching Worker and a modern React/Vite championship simulator.
 
 ## Projects
 
@@ -12,26 +12,28 @@ Production-ready Cloudflare Worker that provides real-time F1 championship data:
 - **Auto-Discovery**: Dynamically detects new races and updates standings
 - **Cron Scheduling**: Automated updates every hour
 
-### 🎯 F1 Championship Simulator (`f1-website/`)
-Interactive web-based championship simulator:
-- **Scenario Planning**: Set constraints like driver positions or relative finishing orders
-- **Monte Carlo Simulation**: Run 1000+ simulations to calculate championship probabilities
-- **Clean UI**: Modern, responsive design optimized for all devices
-- **Client-side Simulation**: All heavy computation happens in the browser
+### 🎯 F1 Championship Simulator (`f1-simulate/`)
+React 19 + Vite application deployed behind a Cloudflare Worker:
+- **Interactive Scenarios**: Configure driver positions, ordering locks, and probability models
+- **Simulation Modes**: Choose between standard and realistic Monte Carlo engines
+- **Tailwind UI**: Dark theme with leaderboards, deltas, and progression charts
+- **Worker-backed API**: Uses the AutoCache Worker locally and in production with graceful fallbacks
+
+### 🗂️ Legacy Pages Site (`f1-website/`)
+Original vanilla JS simulator retained for historical reference. It is no longer updated.
 
 ## Tech Stack
 
-- **Workers**: Cloudflare Workers with ES modules
-- **Frontend**: Vanilla JavaScript (no frameworks needed)
-- **Backend**: Cloudflare Pages Functions (serverless)
-- **Caching**: Cloudflare KV storage
-- **APIs**: Jolpi/Ergast F1 API
+- **Workers**: Cloudflare Workers with ES modules and Wrangler
+- **Frontend**: React 19, Vite 7, Tailwind CSS
+- **Tooling**: TypeScript, ESLint, Cloudflare Vite plugin
+- **Caching**: Cloudflare KV storage via the AutoCache Worker
+- **APIs**: Jolpi/Ergast F1 API consumed through the Worker layer
 
 ## Quick Start
 
 ### F1 AutoCache Worker
 ```bash
-# Deploy the Worker
 cd f1-autocache
 wrangler deploy
 
@@ -42,123 +44,109 @@ wrangler kv namespace create "F1_CACHE" --preview false
 wrangler deploy
 ```
 
-### F1 Website
+### F1 Simulator
 ```bash
-# Deploy to Cloudflare Pages
-cd f1-website
-
-# Connect to GitHub via Cloudflare Dashboard
-# Or deploy directly:
-wrangler pages deploy public
+cd f1-simulate
+npm install
+npm run dev
 ```
 
 ## Deployment
 
 ### F1 AutoCache Worker
-
-1. **Set up Worker**:
+1. **Deploy Worker**:
    ```bash
    cd f1-autocache
    wrangler deploy
    ```
-
-2. **Create KV Storage**:
+2. **Provision KV Storage**:
    ```bash
    wrangler kv namespace create "F1_CACHE" --preview false
    # Copy the namespace ID to wrangler.toml
-   wrangler deploy  # Redeploy with KV binding
+   wrangler deploy
    ```
-
-3. **Verify Deployment**:
+3. **Verify Endpoints**:
    - JSON: `https://f1-autocache.yourworker.workers.dev/json`
    - CSV: `https://f1-autocache.yourworker.workers.dev/csv`
 
-### F1 Website
+### F1 Simulator (React/Vite Worker)
+1. **Install Dependencies**:
+   ```bash
+   cd f1-simulate
+   npm install
+   ```
+2. **Review `wrangler.jsonc`** if you need custom bindings, environments, or asset settings.
+3. **Deploy**:
+   ```bash
+   npm run deploy
+   ```
+4. **Preview Build Locally**:
+   ```bash
+   npm run preview
+   ```
 
-1. **Connect to GitHub**:
-   - Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
-   - Navigate to Pages → Create a project
-   - Connect your GitHub repository
+### Legacy Pages Site
+`f1-website/` is archived. Deployments should target `f1-simulate/` instead.
 
-2. **Build Settings**:
-   - Framework preset: None
-   - Build command: (leave empty)
-   - Build output directory: `f1-website/public`
-
-3. **Deploy**: Push to your main branch or click "Deploy" in Cloudflare
-
-### Local Development
+## Local Development
 
 #### F1 AutoCache Worker
 ```bash
 cd f1-autocache
 wrangler dev
 
-# Test locally at http://localhost:8787
 # JSON: http://localhost:8787/json
 # CSV: http://localhost:8787/csv
 ```
 
-#### F1 Website
+#### F1 Simulator
 ```bash
-cd f1-website
-wrangler pages dev public
+cd f1-simulate
+npm install
+npm run dev
 
-# Access at http://localhost:8788
+# App: http://localhost:5173
+# Worker preview (static build): npm run preview
 ```
 
 ## How It Works
 
 ### F1 AutoCache Worker
+1. **Dynamic Race Discovery** automatically detects new events from Jolpi/Ergast.
+2. **Smart Update Cadence** runs hourly with 6-hour post-race refresh windows.
+3. **Points Aggregation** combines sprint and race points for championship totals.
+4. **Multi-format Output** serves JSON and CSV for downstream consumers.
+5. **KV Persistence** keeps recent data optimized for instant delivery.
 
-The Worker implements intelligent F1 data caching:
-
-1. **Dynamic Race Discovery**: Automatically detects new races from Jolpi/Ergast API
-2. **Smart Updates**: Runs hourly with 6-hour post-race intelligence for fresh data
-3. **Points Calculation**: Computes cumulative championship points (Sprint + Race)
-4. **Multi-format Output**: Serves data as JSON and CSV for different use cases
-5. **KV Persistence**: Stores processed data in Cloudflare KV for instant delivery
-
-### F1 Website Data Strategy
-
-The website API (`f1-website/functions/api/data.js`) implements fallback protection:
-
-1. **Primary Source**: Uses the F1 AutoCache Worker for latest data
-2. **Fallback Protection**: Falls back to original API if Worker is unavailable
-3. **Data Transformation**: Converts Worker format to website-compatible format
-4. **Error Handling**: Graceful degradation ensures the site always works
+### F1 Simulator Data Strategy
+1. **Primary Source** pulls from the AutoCache Worker for low-latency standings.
+2. **Resilient Fallback** hits the upstream API if the Worker is unavailable.
+3. **Transformation Layer** reshapes Worker data into UI-friendly objects.
+4. **Defensive Error Handling** ensures the UI remains responsive even during outages.
 
 ### Simulation Algorithm
-
-1. Uses actual current points from completed races
-2. For each remaining race/sprint:
-   - Generates random finishing orders
-   - Applies user-defined constraints
-   - Adds performance bias for top 5 drivers
-3. Runs 1000 iterations
-4. Calculates win probability for each driver
+1. **Baseline Points** start from the latest standings via AutoCache.
+2. **Race Iteration** simulates remaining races/sprints with scenario constraints.
+3. **Probability Models** apply realistic bias curves for top competitors.
+4. **Monte Carlo Engine** executes 1000+ runs per mode.
+5. **Result Aggregation** computes win probabilities and renders progression charts.
 
 ## Project Structure
 
 ```
 .
-├── f1-autocache/                    # F1 Data Caching Worker
+├── f1-autocache/                    # F1 data caching Worker
 │   ├── worker.mjs                   # Main Worker script
-│   ├── wrangler.toml               # Worker configuration
-│   └── README.md                   # Worker documentation
-├── f1-website/                     # F1 Championship Simulator
-│   ├── public/
-│   │   ├── index.html              # Main HTML file
-│   │   ├── styles.css              # All styling
-│   │   ├── app.js                  # Client-side logic & simulation
-│   │   └── loading.js              # Loading animations
-│   ├── functions/
-│   │   └── api/
-│   │       └── data.js             # API with Worker integration
-│   ├── wrangler.toml               # Pages configuration
-│   └── README.md                   # Website documentation
-├── testing/                        # Development & testing files
-└── README.md                       # This file
+│   ├── wrangler.toml                # Worker configuration
+│   └── README.md                    # Worker documentation
+├── f1-simulate/                     # React/Vite championship simulator
+│   ├── src/                         # UI components, hooks, utilities
+│   ├── worker/                      # Cloudflare Worker entry point
+│   ├── public/                      # Static assets (driver numbers, etc.)
+│   ├── wrangler.jsonc               # Worker deployment config
+│   └── README.md                    # Simulator documentation
+├── f1-website/                      # Legacy vanilla JS simulator (archived)
+└── README.md                        # This file
 ```
 
 ## API Endpoints
@@ -168,13 +156,11 @@ The website API (`f1-website/functions/api/data.js`) implements fallback protect
 - **CSV**: `https://f1-autocache.yourworker.workers.dev/csv`
 - **Metadata**: `https://f1-autocache.yourworker.workers.dev/metadata`
 
-### F1 Website
-- **API**: `/api/data` (integrates with Worker + fallback protection)
+### F1 Simulator
+- **Worker API**: `/api/data` (integrates with AutoCache + fallback protection)
 
 ## Data Sources
-
-The F1 AutoCache Worker uses:
-- **Jolpi/Ergast F1 API**: Primary data source for race results and standings
+- **Jolpi/Ergast F1 API**: Primary race results and standings feed consumed by the Worker
 
 ## Future Enhancements
 
@@ -184,7 +170,7 @@ The F1 AutoCache Worker uses:
 - [ ] Historical season comparisons
 - [ ] Additional output formats (XML, GraphQL)
 
-### F1 Website
+### F1 Simulator
 - [ ] Add driver/team profile images
 - [ ] Animated GIFs for likely winners
 - [ ] Historical comparison charts
