@@ -396,15 +396,28 @@ async function computeAndSave(env, year) {
       }
     }
 
+    let raceColumnIndex = null;
     if (hasRaceRes) {
+      raceColumnIndex = racePositionColumns.length;
+      racePositionColumns.push({ round: roundNum, raceName });
       for (const entry of raceRes) {
         const d = entry.Driver || {};
         const key = (d.code || d.driverId || fullName(d)).toLowerCase();
         if (!key) continue;
-        recordFinish(key, entry.position);
+        const rec = ensureDriver(key, fullName(d));
+        const classification = classifyRaceResult(entry);
+        const raceRec = ensureRacePositionRec(key, rec);
+        raceRec.positions[raceColumnIndex] = classification.type === "position" ? String(classification.value) : classification.type.toUpperCase();
+        const tally = ensurePositionTally(key, rec);
+        if (classification.type === "position") {
+          const bucket = Math.min(classification.value, 22);
+          tally.counts[bucket] = (tally.counts[bucket] || 0) + 1;
+          recordFinish(key, entry.position);
+        } else {
+          tally[classification.type] += 1;
+        }
         const pts = Number(entry.points ?? "0") || 0;
         pointsByKey.set(key, (pointsByKey.get(key) || 0) + pts);
-        const rec = ensureDriver(key, fullName(d));
         const team = entry.Constructor?.name || entry.constructor?.name || "";
         if (team && !rec.team) rec.team = team;
         rec.racePoints[roundNum] = (rec.racePoints[roundNum] || 0) + pts;
@@ -461,6 +474,50 @@ async function computeAndSave(env, year) {
   const tieMeta = { finishCounts, maxFinishPosition };
   const { headers, rows } = accumulate(drivers, perRoundPoints, tieMeta);
 
+  for (const [key, rec] of drvMap) {
+    ensureRacePositionRec(key, rec);
+    ensurePositionTally(key, rec);
+  }
+  for (const rec of racePositions.values()) {
+    while (rec.positions.length < racePositionColumns.length) rec.positions.push("");
+  }
+  const ordering = rows.map(r => r.key);
+  const raceHeaders = racePositionColumns.map((_, idx) => `Race ${idx + 1}`);
+  const raceRows = ordering.map(key => {
+    const rec = racePositions.get(key);
+    const row = {
+      "Driver Number": rec?.number || "",
+      "Driver Name": rec?.name || key
+    };
+    raceHeaders.forEach((label, idx) => {
+      const val = rec?.positions[idx];
+      row[label] = val == null ? "" : String(val);
+    });
+    return row;
+  });
+  const racePositionsDoc = JSON.stringify({
+    year,
+    rounds: racePositionColumns.map((col, idx) => ({ index: idx + 1, round: col.round, raceName: col.raceName })),
+    rows: raceRows
+  });
+
+  const tallyRows = ordering.map(key => {
+    const tally = positionTallies.get(key);
+    const row = {
+      "Driver Number": tally?.number || "",
+      "Driver Name": tally?.name || key
+    };
+    for (const pos of POSITION_BUCKETS) {
+      const label = ordinal(pos);
+      row[label] = tally?.counts?.[pos] || 0;
+    }
+    row.DNS = tally?.dns || 0;
+    row.DNF = tally?.dnf || 0;
+    row.DSQ = tally?.dsq || 0;
+    return row;
+  });
+  const tallyDoc = JSON.stringify({ year, rows: tallyRows });
+
   const csv = rowsToCSV(headers, rows);
   const json = JSON.stringify(rowsToJSON(headers, rows));
   const meta = JSON.stringify({
@@ -474,6 +531,8 @@ async function computeAndSave(env, year) {
   await env.F1_KV.put(JSON_KEY(year), json);
   await env.F1_KV.put(CSV_KEY(year), csv);
   await env.F1_KV.put(META_KEY(year), meta);
+  await env.F1_KV.put(RACE_POSITIONS_KEY(year), racePositionsDoc);
+  await env.F1_KV.put(POSITION_TALLY_KEY(year), tallyDoc);
 
   const roundsDoc = JSON.stringify({ year, rounds: occurred, sprints });
   await env.F1_KV.put(ROUNDS_KEY(year), roundsDoc);
@@ -656,6 +715,18 @@ export default {
         <div>Response: <code>application/json</code></div>
         <div><a href="${withYear(base + "/api/f1/meta")}">Open</a></div>
       </div>
+      <div class="card">
+        <div><span class="pill">GET</span> <code>/api/f1/race-positions.json</code></div>
+        <div class="muted">Query: <code>?year=${year}</code> (optional)</div>
+        <div>Response: <code>application/json</code></div>
+        <div><a href="${withYear(base + "/api/f1/race-positions.json")}">Open</a></div>
+      </div>
+      <div class="card">
+        <div><span class="pill">GET</span> <code>/api/f1/position-tally.json</code></div>
+        <div class="muted">Query: <code>?year=${year}</code> (optional)</div>
+        <div>Response: <code>application/json</code></div>
+        <div><a href="${withYear(base + "/api/f1/position-tally.json")}">Open</a></div>
+      </div>
 
     </div>
   </section>
@@ -708,6 +779,18 @@ export default {
 
       if (url.pathname === "/api/f1/breakdown.json") {
         const body = await env.F1_KV.get(BREAKDOWN_KEY(year));
+        if (!body) return new Response(JSON.stringify({ error: "No data yet" }), { status: 404, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+        return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" } });
+      }
+
+      if (url.pathname === "/api/f1/race-positions.json") {
+        const body = await env.F1_KV.get(RACE_POSITIONS_KEY(year));
+        if (!body) return new Response(JSON.stringify({ error: "No data yet" }), { status: 404, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+        return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" } });
+      }
+
+      if (url.pathname === "/api/f1/position-tally.json") {
+        const body = await env.F1_KV.get(POSITION_TALLY_KEY(year));
         if (!body) return new Response(JSON.stringify({ error: "No data yet" }), { status: 404, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
         return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" } });
       }

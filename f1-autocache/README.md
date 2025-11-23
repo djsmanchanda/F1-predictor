@@ -99,6 +99,52 @@ Returns metadata about the season.
 }
 ```
 
+### GET `/api/f1/race-positions.json[?year=YYYY]`
+Returns every driver's classified finishing result per completed race round.
+
+**Example Response:**
+```json
+{
+  "year": 2025,
+  "rounds": [
+    { "index": 1, "round": 1, "raceName": "Australian Grand Prix" }
+  ],
+  "rows": [
+    {
+      "Driver Number": "1",
+      "Driver Name": "Max Verstappen",
+      "Race 1": "1"
+    },
+    {
+      "Driver Number": "44",
+      "Driver Name": "Lewis Hamilton",
+      "Race 1": "DNF"
+    }
+  ]
+}
+```
+
+### GET `/api/f1/position-tally.json[?year=YYYY]`
+Returns cumulative counts of each finishing position (1st–22nd) plus DNS/DNF/DSQ buckets per driver.
+
+**Example Response:**
+```json
+{
+  "year": 2025,
+  "rows": [
+    {
+      "Driver Number": "1",
+      "Driver Name": "Max Verstappen",
+      "1st": 5,
+      "2nd": 2,
+      "DNS": 0,
+      "DNF": 1,
+      "DSQ": 0
+    }
+  ]
+}
+```
+
 ### POST `/api/f1/update[?year=YYYY]`
 Manually triggers data update. Requires Bearer token if `API_TOKEN` is set.
 
