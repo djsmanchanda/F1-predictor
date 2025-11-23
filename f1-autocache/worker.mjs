@@ -7,6 +7,8 @@ const CSV_KEY  = (y) => `f1:${y}:csv`;
 const META_KEY = (y) => `f1:${y}:meta`;
 const ROUNDS_KEY = (y) => `f1:${y}:rounds`;
 const BREAKDOWN_KEY = (y) => `f1:${y}:breakdown`;
+const RACE_POSITIONS_KEY = (y) => `f1:${y}:race-positions`;
+const POSITION_TALLY_KEY = (y) => `f1:${y}:position-tally`;
 // Historical behavior (kept for compatibility): last fully completed race round
 const LAST_KEY = (y) => `f1:${y}:last-round`;
 // New: track last processed stage (round*10 + stage), where stage: 1=sprint done, 2=race done
@@ -140,14 +142,29 @@ function buildCompletedRounds(races) {
   return { rounds, raceCompleted, sprintCompleted, eligible, upcoming };
 }
 
-function accumulate(drivers, perRoundPoints) {
+function compareFinishStats(tieMeta, keyA, keyB) {
+  const finishMeta = tieMeta || {};
+  const finishCounts = finishMeta.finishCounts || new Map();
+  const statsA = finishCounts.get(keyA);
+  const statsB = finishCounts.get(keyB);
+  const highest = Math.max(finishMeta.maxFinishPosition || 0, statsA?.maxPosition || 0, statsB?.maxPosition || 0);
+  if (highest === 0) return 0;
+  for (let pos = 1; pos <= highest; pos++) {
+    const countA = statsA?.counts?.[pos] || 0;
+    const countB = statsB?.counts?.[pos] || 0;
+    if (countA !== countB) return countB - countA;
+  }
+  return 0;
+}
+
+function accumulate(drivers, perRoundPoints, tieMeta = null) {
   // perRoundPoints: Array<{ round, raceName, pointsByKey: Map<driverKey, number> }>
   // Return rows + dynamic headers
-  const driverMap = new Map(drivers.map(d => [d.key, { number: d.number || "", name: d.name, cum: 0 }]));
+  const driverMap = new Map(drivers.map(d => [d.key, { key: d.key, number: d.number || "", name: d.name, cum: 0 }]));
   // Include drivers who appear only in results but not lineup
   for (const r of perRoundPoints) {
-    for (const [k, pts] of r.pointsByKey) {
-      if (!driverMap.has(k)) driverMap.set(k, { number: "", name: k, cum: 0 });
+    for (const [k] of r.pointsByKey) {
+      if (!driverMap.has(k)) driverMap.set(k, { key: k, number: "", name: k, cum: 0 });
     }
   }
 
@@ -156,6 +173,7 @@ function accumulate(drivers, perRoundPoints) {
   const rows = [];
   for (const [key, base] of driverMap) {
     const line = {
+      key,
       number: base.number,
       name: base.name,
       per: [],
@@ -171,7 +189,12 @@ function accumulate(drivers, perRoundPoints) {
     rows.push(line);
   }
 
-  rows.sort((a,b) => b.final - a.final || a.name.localeCompare(b.name));
+  rows.sort((a, b) => {
+    if (b.final !== a.final) return b.final - a.final;
+    const tie = compareFinishStats(tieMeta, a.key, b.key);
+    if (tie !== 0) return tie;
+    return a.name.localeCompare(b.name);
+  });
   return { headers, rows };
 }
 
@@ -201,6 +224,32 @@ function rowsToJSON(headers, rows) {
   return jsonRows;
 }
 
+const POSITION_BUCKETS = Array.from({ length: 22 }, (_, i) => i + 1);
+
+function ordinal(n) {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  const mod10 = n % 10;
+  if (mod10 === 1) return `${n}st`;
+  if (mod10 === 2) return `${n}nd`;
+  if (mod10 === 3) return `${n}rd`;
+  return `${n}th`;
+}
+
+function classifyRaceResult(entry) {
+  const position = Number(entry.position);
+  const posText = String(entry.positionText || "").toUpperCase();
+  const statusRaw = entry.status || entry.Status?.status || "";
+  const status = statusRaw.toLowerCase();
+
+  if (Number.isFinite(position) && position > 0 && posText !== "R" && !status.includes("did not start") && !status.includes("disqualified")) {
+    return { type: "position", value: position };
+  }
+  if (status.includes("disqualified")) return { type: "dsq" };
+  if (status.includes("did not start")) return { type: "dns" };
+  return { type: "dnf" };
+}
+
 async function computeAndSave(env, year) {
   const [races, drivers] = await Promise.all([getRaces(year), getDrivers(year)]);
   const { rounds } = buildCompletedRounds(races);
@@ -209,11 +258,48 @@ async function computeAndSave(env, year) {
   const roundsMeta = [];
   const occurred = [];
   const sprints = [];
+  const finishCounts = new Map();
+  let maxFinishPosition = 0;
+  const racePositionColumns = [];
+  const racePositions = new Map();
+  const positionTallies = new Map();
 
-  const drvMap = new Map(drivers.map(d => [d.key, { number: d.number || "", name: d.name, team: "", racePoints: {}, sprintPoints: {} }]));
+  const recordFinish = (key, rawPosition) => {
+    const position = Number(rawPosition);
+    if (!Number.isFinite(position) || position <= 0) return;
+    const current = finishCounts.get(key) || { counts: [], maxPosition: 0 };
+    current.counts[position] = (current.counts[position] || 0) + 1;
+    if (position > current.maxPosition) current.maxPosition = position;
+    finishCounts.set(key, current);
+    if (position > maxFinishPosition) maxFinishPosition = position;
+  };
+
+  const ensureRacePositionRec = (key, rec) => {
+    if (!racePositions.has(key)) {
+      racePositions.set(key, { key, number: rec?.number || "", name: rec?.name || key, positions: [] });
+    }
+    return racePositions.get(key);
+  };
+
+  const ensurePositionTally = (key, rec) => {
+    if (!positionTallies.has(key)) {
+      positionTallies.set(key, {
+        key,
+        number: rec?.number || "",
+        name: rec?.name || key,
+        counts: Array(23).fill(0), // 0 unused, 1-22 valid
+        dns: 0,
+        dnf: 0,
+        dsq: 0
+      });
+    }
+    return positionTallies.get(key);
+  };
+
+  const drvMap = new Map(drivers.map(d => [d.key, { key: d.key, number: d.number || "", name: d.name, team: "", racePoints: {}, sprintPoints: {} }]));
   const ensureDriver = (key, displayName) => {
     if (!drvMap.has(key)) {
-      drvMap.set(key, { number: "", name: displayName || key, team: "", racePoints: {}, sprintPoints: {} });
+      drvMap.set(key, { key, number: "", name: displayName || key, team: "", racePoints: {}, sprintPoints: {} });
     }
     return drvMap.get(key);
   };
@@ -315,6 +401,7 @@ async function computeAndSave(env, year) {
         const d = entry.Driver || {};
         const key = (d.code || d.driverId || fullName(d)).toLowerCase();
         if (!key) continue;
+        recordFinish(key, entry.position);
         const pts = Number(entry.points ?? "0") || 0;
         pointsByKey.set(key, (pointsByKey.get(key) || 0) + pts);
         const rec = ensureDriver(key, fullName(d));
@@ -371,7 +458,8 @@ async function computeAndSave(env, year) {
     }
   }
 
-  const { headers, rows } = accumulate(drivers, perRoundPoints);
+  const tieMeta = { finishCounts, maxFinishPosition };
+  const { headers, rows } = accumulate(drivers, perRoundPoints, tieMeta);
 
   const csv = rowsToCSV(headers, rows);
   const json = JSON.stringify(rowsToJSON(headers, rows));
@@ -394,7 +482,12 @@ async function computeAndSave(env, year) {
     const totalRace = Object.values(rec.racePoints).reduce((a, b) => a + b, 0);
     const totalSprint = Object.values(rec.sprintPoints).reduce((a, b) => a + b, 0);
     return { ...rec, totalRacePoints: totalRace, totalSprintPoints: totalSprint, totalPoints: totalRace + totalSprint };
-  }).sort((a, b) => b.totalPoints - a.totalPoints || a.name.localeCompare(b.name));
+  }).sort((a, b) => {
+    if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+    const tie = compareFinishStats(tieMeta, a.key, b.key);
+    if (tie !== 0) return tie;
+    return a.name.localeCompare(b.name);
+  });
   const breakdownDoc = JSON.stringify({ year, rounds: occurred, sprints, drivers: driversArr });
   await env.F1_KV.put(BREAKDOWN_KEY(year), breakdownDoc);
 

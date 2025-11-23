@@ -2,7 +2,7 @@
 
 A production-ready Cloudflare Worker that provides cached F1 standings data using the Jolpi/Ergast API mirror.
 
-Quick start: After deployment, visit your Worker's base URL (e.g. https://your-worker.workers.dev/) to see an interactive API documentation page listing endpoints and sample outputs.
+Quick start: After deployment, visit your Worker's base URL (e.g. https://f1-autocache.djsmanchanda.workers.dev/) to see an interactive API documentation page listing endpoints and sample outputs.
 
 ## Features
 
@@ -103,7 +103,7 @@ Returns metadata about the season.
 Manually triggers data update. Requires Bearer token if `API_TOKEN` is set.
 
 ```bash
-curl -X POST "https://your-worker.workers.dev/api/f1/update" \
+curl -X POST "https://f1-autocache.djsmanchanda.workers.dev/api/f1/update" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -134,15 +134,15 @@ Replace your existing API calls with:
 
 ```javascript
 // CSV
-const csvResponse = await fetch("https://your-worker.workers.dev/api/f1/standings.csv");
+const csvResponse = await fetch("https://f1-autocache.djsmanchanda.workers.dev/api/f1/standings.csv");
 const csvData = await csvResponse.text();
 
 // JSON
-const jsonResponse = await fetch("https://your-worker.workers.dev/api/f1/standings.json");
+const jsonResponse = await fetch("https://f1-autocache.djsmanchanda.workers.dev/api/f1/standings.json");
 const standings = await jsonResponse.json();
 
 // Metadata
-const metaResponse = await fetch("https://your-worker.workers.dev/api/f1/meta");
+const metaResponse = await fetch("https://f1-autocache.djsmanchanda.workers.dev/api/f1/meta");
 const metadata = await metaResponse.json();
 ```
 
