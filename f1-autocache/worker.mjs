@@ -250,6 +250,30 @@ function classifyRaceResult(entry) {
   return { type: "dnf" };
 }
 
+function parsePositionSelection(input) {
+  if (!input) return null;
+  const maxPos = POSITION_BUCKETS.length;
+  const tokens = input.split(",").map(t => t.trim()).filter(Boolean);
+  if (tokens.length === 0) return null;
+  const selected = new Set();
+  for (const token of tokens) {
+    const rangeParts = token.split("-").map(x => x.trim()).filter(Boolean);
+    if (rangeParts.length === 1) {
+      const val = Number(rangeParts[0]);
+      if (!Number.isFinite(val) || val < 1 || val > maxPos) return null;
+      selected.add(val);
+    } else if (rangeParts.length === 2) {
+      const start = Number(rangeParts[0]);
+      const end = Number(rangeParts[1]);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || end < 1 || start > maxPos || end > maxPos || end < start) return null;
+      for (let n = start; n <= end; n++) selected.add(n);
+    } else {
+      return null;
+    }
+  }
+  return Array.from(selected).sort((a, b) => a - b);
+}
+
 async function computeAndSave(env, year) {
   const [races, drivers] = await Promise.all([getRaces(year), getDrivers(year)]);
   const { rounds } = buildCompletedRounds(races);
@@ -410,7 +434,7 @@ async function computeAndSave(env, year) {
         raceRec.positions[raceColumnIndex] = classification.type === "position" ? String(classification.value) : classification.type.toUpperCase();
         const tally = ensurePositionTally(key, rec);
         if (classification.type === "position") {
-          const bucket = Math.min(classification.value, 22);
+          const bucket = Math.min(classification.value, POSITION_BUCKETS.length);
           tally.counts[bucket] = (tally.counts[bucket] || 0) + 1;
           recordFinish(key, entry.position);
         } else {
@@ -724,6 +748,7 @@ export default {
       <div class="card">
         <div><span class="pill">GET</span> <code>/api/f1/position-tally.json</code></div>
         <div class="muted">Query: <code>?year=${year}</code> (optional)</div>
+        <div class="muted">Filters: <code>?positions=1-3</code>, <code>?driverNumber=44</code></div>
         <div>Response: <code>application/json</code></div>
         <div><a href="${withYear(base + "/api/f1/position-tally.json")}">Open</a></div>
       </div>
@@ -792,7 +817,55 @@ export default {
       if (url.pathname === "/api/f1/position-tally.json") {
         const body = await env.F1_KV.get(POSITION_TALLY_KEY(year));
         if (!body) return new Response(JSON.stringify({ error: "No data yet" }), { status: 404, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
-        return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" } });
+
+        const positionsParam = url.searchParams.get("positions");
+        const driverParam = url.searchParams.get("driver") || url.searchParams.get("driverNumber");
+        if (!positionsParam && !driverParam) {
+          return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" } });
+        }
+
+        let parsed;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          return new Response(JSON.stringify({ error: "Malformed data" }), { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+        }
+
+        let selectedPositions = null;
+        if (positionsParam) {
+          selectedPositions = parsePositionSelection(positionsParam);
+          if (!selectedPositions || selectedPositions.length === 0) {
+            return new Response(JSON.stringify({ error: "positions must be a comma list (e.g. 1,2,3) or ranges (e.g. 1-3) within 1-22" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            });
+          }
+        }
+
+        const ordinalLabels = (selectedPositions || POSITION_BUCKETS).map(ordinal);
+        let rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
+        if (driverParam) {
+          const driverFilter = driverParam.trim().toLowerCase();
+          rows = rows.filter(row => String(row?.["Driver Number"] || "").trim().toLowerCase() === driverFilter);
+        }
+
+        const filteredRows = rows.map(row => {
+          const shaped = {
+            "Driver Number": row["Driver Number"],
+            "Driver Name": row["Driver Name"]
+          };
+          for (const label of ordinalLabels) {
+            shaped[label] = row[label] ?? 0;
+          }
+          shaped.DNS = row.DNS ?? 0;
+          shaped.DNF = row.DNF ?? 0;
+          shaped.DSQ = row.DSQ ?? 0;
+          return shaped;
+        });
+
+        return new Response(JSON.stringify({ ...parsed, rows: filteredRows }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" }
+        });
       }
 
       if (url.pathname === "/api/f1/standings.json") {

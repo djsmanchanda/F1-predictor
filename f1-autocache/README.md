@@ -145,6 +145,11 @@ Returns cumulative counts of each finishing position (1st–22nd) plus DNS/DNF/D
 }
 ```
 
+**Optional query parameters:**
+- `positions=1-3` or `positions=4,5,6` — restricts the ordinal columns that are returned (ranges and comma lists are both supported).
+- `driverNumber=44` (alias `driver=44`) — filters the rows to a single driver number.
+- Combine them, e.g. `?positions=1-3&driverNumber=1` to fetch only the podium tally for driver #1.
+
 ### POST `/api/f1/update[?year=YYYY]`
 Manually triggers data update. Requires Bearer token if `API_TOKEN` is set.
 
