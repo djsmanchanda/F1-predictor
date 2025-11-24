@@ -74,6 +74,20 @@
   .btn-secondary { @apply btn bg-muted text-foreground hover:bg-neutral-800; }
   .btn-accent { @apply btn bg-accent text-accent-foreground hover:bg-orange-500; }
 
+  /* Standings table grid - shared by header and rows for perfect alignment */
+  .standings-grid {
+    display: grid;
+    grid-template-columns:
+      3rem           /* Pos */
+      minmax(0, 1fr) /* Driver */
+      4rem           /* Wins */
+      5rem           /* Podiums */
+      7rem           /* Δ Leader */
+      7rem           /* Δ Prev */
+      4.5rem;        /* Points */
+    align-items: center;
+  }
+
   /* Slim scrollbar */
   .scrollbar-slim { scrollbar-width: thin; scrollbar-color: rgba(111, 111, 111, 0.6) transparent; }
   .scrollbar-slim::-webkit-scrollbar { height: 8px; }
