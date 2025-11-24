@@ -9,6 +9,7 @@ const ROUNDS_KEY = (y) => `f1:${y}:rounds`;
 const BREAKDOWN_KEY = (y) => `f1:${y}:breakdown`;
 const RACE_POSITIONS_KEY = (y) => `f1:${y}:race-positions`;
 const POSITION_TALLY_KEY = (y) => `f1:${y}:position-tally`;
+const WINS_KEY = (y) => `f1:${y}:wins`;
 // Historical behavior (kept for compatibility): last fully completed race round
 const LAST_KEY = (y) => `f1:${y}:last-round`;
 // New: track last processed stage (round*10 + stage), where stage: 1=sprint done, 2=race done
@@ -287,6 +288,7 @@ async function computeAndSave(env, year) {
   const racePositionColumns = [];
   const racePositions = new Map();
   const positionTallies = new Map();
+  const winStats = new Map();
 
   const recordFinish = (key, rawPosition) => {
     const position = Number(rawPosition);
@@ -318,6 +320,13 @@ async function computeAndSave(env, year) {
       });
     }
     return positionTallies.get(key);
+  };
+
+  const ensureWinStat = (key, rec) => {
+    if (!winStats.has(key)) {
+      winStats.set(key, { key, number: rec?.number || "", name: rec?.name || key, raceWins: 0, podiums: 0 });
+    }
+    return winStats.get(key);
   };
 
   const drvMap = new Map(drivers.map(d => [d.key, { key: d.key, number: d.number || "", name: d.name, team: "", racePoints: {}, sprintPoints: {} }]));
@@ -408,6 +417,11 @@ async function computeAndSave(env, year) {
         const team = entry.Constructor?.name || entry.constructor?.name || "";
         if (team && !rec.team) rec.team = team;
         rec.sprintPoints[roundNum] = (rec.sprintPoints[roundNum] || 0) + pts;
+        const classification = classifyRaceResult(entry);
+        if (classification.type === "position" && classification.value <= 3) {
+          const winStat = ensureWinStat(key, rec);
+          winStat.podiums += 1;
+        }
       }
     } else if (useSprintOverride) {
       for (const entry of ovSprint) {
@@ -437,6 +451,9 @@ async function computeAndSave(env, year) {
           const bucket = Math.min(classification.value, POSITION_BUCKETS.length);
           tally.counts[bucket] = (tally.counts[bucket] || 0) + 1;
           recordFinish(key, entry.position);
+            const winStat = ensureWinStat(key, rec);
+            if (classification.value === 1) winStat.raceWins += 1;
+            if (classification.value <= 3) winStat.podiums += 1;
         } else {
           tally[classification.type] += 1;
         }
@@ -501,6 +518,7 @@ async function computeAndSave(env, year) {
   for (const [key, rec] of drvMap) {
     ensureRacePositionRec(key, rec);
     ensurePositionTally(key, rec);
+    ensureWinStat(key, rec);
   }
   for (const rec of racePositions.values()) {
     while (rec.positions.length < racePositionColumns.length) rec.positions.push("");
@@ -542,6 +560,17 @@ async function computeAndSave(env, year) {
   });
   const tallyDoc = JSON.stringify({ year, rows: tallyRows });
 
+  const winsRows = ordering.map(key => {
+    const stat = winStats.get(key);
+    return {
+      "Driver Number": stat?.number || "",
+      "Driver Name": stat?.name || key,
+      "Race Wins": stat?.raceWins || 0,
+      "Podiums": stat?.podiums || 0
+    };
+  });
+  const winsDoc = JSON.stringify({ year, rows: winsRows });
+
   const csv = rowsToCSV(headers, rows);
   const json = JSON.stringify(rowsToJSON(headers, rows));
   const meta = JSON.stringify({
@@ -557,6 +586,7 @@ async function computeAndSave(env, year) {
   await env.F1_KV.put(META_KEY(year), meta);
   await env.F1_KV.put(RACE_POSITIONS_KEY(year), racePositionsDoc);
   await env.F1_KV.put(POSITION_TALLY_KEY(year), tallyDoc);
+  await env.F1_KV.put(WINS_KEY(year), winsDoc);
 
   const roundsDoc = JSON.stringify({ year, rounds: occurred, sprints });
   await env.F1_KV.put(ROUNDS_KEY(year), roundsDoc);
@@ -715,6 +745,12 @@ export default {
         <div>Response: <code>text/csv</code></div>
         <div><a href="${withYear(base + "/api/f1/standings.csv")}">Open</a></div>
       <div class="card">
+        <div><span class="pill">GET</span> <code>/api/f1/wins.json</code></div>
+        <div class="muted">Query: <code>?year=${year}</code> (optional)</div>
+        <div>Response: <code>application/json</code></div>
+        <div><a href="${withYear(base + "/api/f1/wins.json")}">Open</a></div>
+      </div>
+      <div class="card">
         <div><span class="pill">GET</span> <code>/api/f1/rounds.json</code></div>
         <div class="muted">Query: <code>?year=${year}</code> (optional)</div>
         <div>Response: <code>application/json</code></div>
@@ -866,6 +902,12 @@ export default {
         return new Response(JSON.stringify({ ...parsed, rows: filteredRows }), {
           headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" }
         });
+      }
+
+      if (url.pathname === "/api/f1/wins.json") {
+        const body = await env.F1_KV.get(WINS_KEY(year));
+        if (!body) return new Response(JSON.stringify({ error: "No data yet" }), { status: 404, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+        return new Response(body, { headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*" } });
       }
 
       if (url.pathname === "/api/f1/standings.json") {
