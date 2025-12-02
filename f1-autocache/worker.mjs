@@ -418,10 +418,6 @@ async function computeAndSave(env, year) {
         if (team && !rec.team) rec.team = team;
         rec.sprintPoints[roundNum] = (rec.sprintPoints[roundNum] || 0) + pts;
         const classification = classifyRaceResult(entry);
-        if (classification.type === "position" && classification.value <= 3) {
-          const winStat = ensureWinStat(key, rec);
-          winStat.podiums += 1;
-        }
       }
     } else if (useSprintOverride) {
       for (const entry of ovSprint) {

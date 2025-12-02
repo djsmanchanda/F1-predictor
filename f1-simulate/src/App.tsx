@@ -130,18 +130,11 @@ function Stats({ data }: { data: AppData }) {
   );
 }
 
-function StandingsTable({
-  data,
-  remainingRaces,
-  remainingSprints,
-}: {
-  data: AppData;
-  remainingRaces: Array<{ round: number }>;
-  remainingSprints: Array<{ round: number }>;
-}) {
+function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppData; remainingRaces: Array<{round:number}>; remainingSprints: Array<{round:number}> }) {
   const [page, setPage] = useState(0);
   const perPage = 10;
 
+  // Fetch position tally for tie-breaking and wins/podiums for display
   const [positionTally, setPositionTally] = useState<Record<number, Record<string, number>> | null>(null);
   const [winsData, setWinsData] = useState<Record<number, { wins: number; podiums: number }> | null>(null);
 
@@ -152,7 +145,7 @@ function StandingsTable({
       try {
         const [tallyRes, winsRes] = await Promise.all([
           fetch(`https://f1-autocache.djsmanchanda.workers.dev/api/f1/position-tally.json?year=${year}`),
-          fetch(`https://f1-autocache.djsmanchanda.workers.dev/api/f1/wins.json?year=${year}`),
+          fetch(`https://f1-autocache.djsmanchanda.workers.dev/api/f1/wins.json?year=${year}`)
         ]);
         if (tallyRes.ok) {
           const tallyJson = await tallyRes.json();
@@ -177,28 +170,28 @@ function StandingsTable({
             if (!num) continue;
             winsMap[num] = {
               wins: Number(row["Race Wins"] ?? 0),
-              podiums: Number(row["Podiums"] ?? 0),
+              podiums: Number(row["Podiums"] ?? 0)
             };
           }
           if (!cancelled) setWinsData(winsMap);
         }
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
     }
     loadTallyAndWins();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
+  // Sort with proper F1 tie-breaking: points, then 1st places, then 2nd places, etc.
   const sorted = Object.entries<number>(data.currentPoints)
     .map(([k, v]) => [parseInt(k), v] as [number, number])
     .sort((a, b) => {
+      // First by points
       if (b[1] !== a[1]) return b[1] - a[1];
+      // Tie-break using position tally
       if (positionTally) {
         const tallyA = positionTally[a[0]] || {};
         const tallyB = positionTally[b[0]] || {};
+        // Compare 1st places, then 2nd, then 3rd, etc.
         for (let pos = 1; pos <= 22; pos++) {
           const posKey = pos === 1 ? "1st" : pos === 2 ? "2nd" : pos === 3 ? "3rd" : `${pos}th`;
           const countA = tallyA[posKey] ?? 0;
@@ -206,56 +199,54 @@ function StandingsTable({
           if (countB !== countA) return countB - countA;
         }
       }
+      // Final fallback: driver number
       return a[0] - b[0];
     });
-
   const totalPages = Math.ceil(sorted.length / perPage);
   const start = page * perPage;
   const current = sorted.slice(start, start + perPage);
 
   const leaderId = sorted[0]?.[0];
   const leaderPts = sorted[0]?.[1] ?? 0;
-  const maxPointsPossible =
-    (remainingRaces?.length || 0) * 25 + (remainingSprints?.length || 0) * 8 + (remainingRaces?.length || 0) * 1;
+  const maxPointsPossible = (remainingRaces?.length || 0) * 25 + (remainingSprints?.length || 0) * 8 + (remainingRaces?.length || 0) * 1;
 
+  // Precompute contention set: break as soon as one driver exceeds the max possible gap
   const contention = new Set<number>();
   for (const [num, pts] of sorted) {
     const gap = Math.max(0, leaderPts - pts);
-    if (gap < maxPointsPossible) contention.add(num);
-    else break;
+    if (gap < maxPointsPossible) {
+      contention.add(num);
+    } else {
+      break; // after the first non-contender, all below are also non-contenders
+    }
   }
 
+  // Previous-weekend cumulative points and order
   const [prevPoints, setPrevPoints] = useState<Record<number, number> | null>(null);
   const [leaderPrevPts, setLeaderPrevPts] = useState<number | null>(null);
   const [prevOrder, setPrevOrder] = useState<number[] | null>(null);
 
+  // Build ordered Grand Prix keys from schedule
   const now = new Date();
   let lastCompletedIndex = -1;
   for (let i = data.allRaces.length - 1; i >= 0; i--) {
     const r = data.allRaces[i];
-    if (r.status === "completed" || (r.dateTimeUTC && new Date(r.dateTimeUTC) <= now)) {
-      lastCompletedIndex = i;
-      break;
-    }
+    if (r.status === "completed" || (r.dateTimeUTC && new Date(r.dateTimeUTC) <= now)) { lastCompletedIndex = i; break; }
   }
   const prevIndex = lastCompletedIndex - 1;
 
   useEffect(() => {
     let cancelled = false;
     async function loadPrev() {
-      if (leaderId == null || prevIndex < 0) {
-        setPrevPoints(null);
-        setLeaderPrevPts(null);
-        setPrevOrder(null);
-        return;
-      }
+      if (leaderId == null || prevIndex < 0) { setPrevPoints(null); setLeaderPrevPts(null); setPrevOrder(null); return; }
       try {
         const year = new Date().getUTCFullYear();
         const r = await fetch(`https://f1-autocache.djsmanchanda.workers.dev/api/f1/standings.json?year=${year}`);
         if (!r.ok) throw new Error(String(r.status));
         const rows: any[] = await r.json();
-        const prevRace = data.allRaces[prevIndex];
-        const prevKey = prevRace.raceName;
+  const prevRace = data.allRaces[prevIndex];
+  const prevKey = prevRace.raceName;
+        // Build prev points map and order
         const ptsMap: Record<number, number> = {};
         for (const row of rows) {
           const num = parseInt(row["Driver Number"]) || 0;
@@ -273,21 +264,17 @@ function StandingsTable({
           setLeaderPrevPts(leaderPrev);
         }
       } catch {
-        if (!cancelled) {
-          setPrevPoints(null);
-          setPrevOrder(null);
-          setLeaderPrevPts(null);
-        }
+        if (!cancelled) { setPrevPoints(null); setPrevOrder(null); setLeaderPrevPts(null); }
       }
     }
     loadPrev();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [leaderId, prevIndex]);
 
+
   const ArrowLeader = ({ d }: { d: number }) => {
-    if (prevPoints == null || leaderPrevPts == null) return <span className="text-muted-foreground">—</span>;
+    if (prevPoints == null || leaderPrevPts == null)
+      return <span className="text-muted-foreground">—</span>;
 
     const prevGap = Math.max(0, leaderPrevPts - (prevPoints[d] ?? 0));
     const nowGap = Math.max(0, leaderPts - (data.currentPoints[d] ?? 0));
@@ -297,7 +284,7 @@ function StandingsTable({
       return (
         <span className="inline-flex items-center gap-1">
           <span className="text-green-500">▲</span>
-          <span className="text-muted-foreground tabular-nums text-xs">{diff > 0 ? `+${diff}` : diff}</span>
+          <span className="text-muted-foreground tabular-nums">{diff > 0 ? `+${diff}` : diff}</span>
         </span>
       );
 
@@ -305,7 +292,7 @@ function StandingsTable({
       return (
         <span className="inline-flex items-center gap-1">
           <span className="text-red-500">▼</span>
-          <span className="text-muted-foreground tabular-nums text-xs">{diff > 0 ? `+${diff}` : diff}</span>
+          <span className="text-muted-foreground tabular-nums">{diff > 0 ? `+${diff}` : diff}</span>
         </span>
       );
 
@@ -313,22 +300,25 @@ function StandingsTable({
   };
 
   const ArrowPrev = ({ d, currentIndex }: { d: number; currentIndex: number }) => {
-    if (prevPoints == null || prevOrder == null) return <span className="text-muted-foreground">—</span>;
+    if (prevPoints == null || prevOrder == null)
+      return <span className="text-muted-foreground">—</span>;
 
     const idxPrev = prevOrder.indexOf(d);
-    if (idxPrev <= 0) return <span className="text-muted-foreground">—</span>;
+    if (idxPrev <= 0)
+      return <span className="text-muted-foreground">—</span>;
 
     const prevAbove = prevOrder[idxPrev - 1];
     const prevGapPrev = Math.max(0, (prevPoints[prevAbove] ?? 0) - (prevPoints[d] ?? 0));
-    const currAbovePts = currentIndex === 0 ? null : sorted[currentIndex - 1]?.[1] ?? null;
-    const nowGapPrev = currAbovePts == null ? 0 : Math.max(0, (currAbovePts ?? 0) - (data.currentPoints[d] ?? 0));
+    const currAbovePts = currentIndex === 0 ? null : (sorted[currentIndex - 1]?.[1] ?? null);
+    const nowGapPrev =
+      currAbovePts == null ? 0 : Math.max(0, (currAbovePts ?? 0) - (data.currentPoints[d] ?? 0));
     const diff = nowGapPrev - prevGapPrev;
 
     if (nowGapPrev < prevGapPrev)
       return (
         <span className="inline-flex items-center gap-1">
           <span className="text-green-500">▲</span>
-          <span className="text-muted-foreground tabular-nums text-xs">{diff > 0 ? `+${diff}` : diff}</span>
+          <span className="text-muted-foreground tabular-nums">{diff > 0 ? `+${diff}` : diff}</span>
         </span>
       );
 
@@ -336,7 +326,7 @@ function StandingsTable({
       return (
         <span className="inline-flex items-center gap-1">
           <span className="text-red-500">▼</span>
-          <span className="text-muted-foreground tabular-nums text-xs">{diff > 0 ? `+${diff}` : diff}</span>
+          <span className="text-muted-foreground tabular-nums">{diff > 0 ? `+${diff}` : diff}</span>
         </span>
       );
 
@@ -345,41 +335,50 @@ function StandingsTable({
 
   const PositionChange = ({ d, currentIndex }: { d: number; currentIndex: number }) => {
     if (prevOrder == null) return null;
+
     const prevPos = prevOrder.indexOf(d);
     if (prevPos < 0) return null;
+
     const posChange = prevPos - currentIndex;
-    if (posChange > 0)
+    
+    if (posChange > 0) {
+      // Moved up (previous position was higher number = worse position)
       return (
-        <span className="inline-flex items-center gap-1 ml-1">
+        <span className="inline-flex items-center gap-0.5 ml-1">
           <span className="text-green-500 text-[0.6rem]">▲</span>
           <span className="text-green-500/60 text-[0.65rem] tabular-nums">{posChange}</span>
         </span>
       );
-    if (posChange < 0)
+    }
+
+    if (posChange < 0) {
+      // Moved down
       return (
-        <span className="inline-flex items-center gap-1 ml-1">
+        <span className="inline-flex items-center gap-0.5 ml-1">
           <span className="text-red-500 text-[0.6rem]">▼</span>
           <span className="text-red-500/60 text-[0.65rem] tabular-nums">{Math.abs(posChange)}</span>
         </span>
       );
+    }
+
     return null;
   };
 
   return (
     <div className="card p-0 overflow-hidden">
       <div className="overflow-x-auto">
-        <div className="min-w-[640px] p-1">
-          <div className="standings-grid min-h-[52px] bg-muted/60 px-3 py-2 text-sm font-medium rounded-t-md mb-1">
-            <div className="text-center">Pos</div>
-            <div>Driver</div>
+        <div className="min-w-0 w-full">
+          <div className="grid grid-cols-[3.5rem_1fr_4rem_4.5rem_7rem_7rem_5rem] items-center bg-muted/60 px-4 py-2 text-sm font-medium">
+            <div className="text-left">Pos</div>
+            <div className="text-left">Driver</div>
             <div className="text-center">Wins</div>
             <div className="text-center">Podiums</div>
             <div className="text-center">Δ Leader</div>
             <div className="text-center">Δ Prev</div>
-            <div className="text-center">Points</div>
+            <div className="text-right">Points</div>
           </div>
 
-          <div className="space-y-1">
+          <div className="p-1 space-y-1">
             {current.map(([num, pts], idx) => {
               const absIndex = start + idx;
               const gapLeader = Math.max(0, leaderPts - pts);
@@ -393,78 +392,65 @@ function StandingsTable({
               return (
                 <div
                   key={num}
-                  className={`standings-grid min-h-[52px] border border-border/60 rounded-md shadow-md hover:shadow-lg hover:-translate-y-1 relative hover:z-10 transition px-3 py-1.5 ${
-                    isLeader ? "bg-yellow-900/25 ring-1 ring-yellow-500/30" : isContender ? "bg-green-900/15 ring-1 ring-green-500/25" : "bg-background/40"
-                  }`}
+                  className={`grid grid-cols-[3.5rem_1fr_4rem_4.5rem_7rem_7rem_5rem] items-center border border-border/60 rounded-md shadow-md hover:shadow-lg hover:-translate-y-1 relative hover:z-10 transition px-2 py-1.5 ${
+                    isLeader
+                      ? "bg-yellow-900/25 ring-1 ring-yellow-500/30"
+                      : isContender
+                      ? "bg-green-900/15 ring-1 ring-green-500/25"
+                      : "bg-background/40"
+                  } card-fixed-row`}
                 >
-                  <div className="text-center font-medium inline-flex items-center justify-center">
+                  <div className="px-1 font-medium inline-flex items-center">
                     <span>{absIndex + 1}</span>
                     <PositionChange d={num} currentIndex={absIndex} />
                   </div>
-
-                  <div>
+                  <div className="px-1">
                     <div className="flex items-center gap-2">
                       <span className="inline-flex items-center justify-center w-7 h-7 rounded-[35%] bg-neutral-200/80 flex-shrink-0">
                         <img
                           src={`/driver_numbers/${num}.png`}
                           alt={`#${num}`}
                           className="h-5 w-5 object-contain"
-                          onError={(e) => ((e.currentTarget.style.display = "none"), undefined)}
+                          onError={(e) => ((e.currentTarget.style.display = 'none'), undefined)}
                         />
                       </span>
                       <span className="font-semibold truncate max-w-[120px] md:max-w-none">{data.driverNames[num] || `Driver #${num}`}</span>
                     </div>
                   </div>
-
-                  <div className="text-center tabular-nums text-amber-400">
-                    {driverWins > 0 ? (
-                      <span className={`${driverWins >= 5 ? 'text-lg font-extrabold' : driverWins >= 3 ? 'text-base font-bold' : driverWins >= 1 ? 'text-sm font-semibold' : 'font-medium'}`}>
-                        {driverWins}
-                      </span>
-                    ) : <span className="text-muted-foreground/50">—</span>}
+                  <div className="px-1 text-center tabular-nums font-medium text-amber-400">
+                    {driverWins > 0 ? driverWins : <span className="text-muted-foreground/50">—</span>}
                   </div>
-
-                  <div className="text-center tabular-nums text-orange-400">
-                    {driverPodiums > 0 ? (
-                      <span className={`${driverPodiums >= 15 ? 'text-lg font-extrabold' : driverPodiums >= 10 ? 'text-base font-bold' : driverPodiums >= 5 ? 'text-sm font-semibold' : 'font-medium'}`}>
-                        {driverPodiums}
-                      </span>
-                    ) : <span className="text-muted-foreground/50">—</span>}
+                  <div className="px-1 text-center tabular-nums font-medium text-orange-400">
+                    {driverPodiums > 0 ? driverPodiums : <span className="text-muted-foreground/50">—</span>}
                   </div>
-
-                  <div className="px-2 text-center">
+                  <div className="px-1 text-center">
                     <div className="inline-flex items-center gap-2">
-                      <span className="tabular-nums font-medium w-10 text-right">{gapLeader}</span>
-                      <span className="inline-block w-14 text-left">
+                      <span className="tabular-nums font-medium w-8 text-right">{gapLeader}</span>
+                      <span className="inline-block w-12 text-left">
                         <ArrowLeader d={num} />
                       </span>
                     </div>
                   </div>
-
-                  <div className="px-2 text-center">
+                  <div className="px-1 text-center">
                     <div className="inline-flex items-center gap-2">
-                      <span className="tabular-nums font-medium w-10 text-right">{gapPrev}</span>
-                      <span className="inline-block w-14 text-left">
+                      <span className="tabular-nums font-medium w-8 text-right">{gapPrev}</span>
+                      <span className="inline-block w-12 text-left">
                         <ArrowPrev d={num} currentIndex={absIndex} />
                       </span>
                     </div>
                   </div>
-
-                  <div className="px-2 text-right font-semibold tabular-nums">{pts}</div>
+                  <div className="px-1 text-right font-semibold tabular-nums">{pts}</div>
                 </div>
               );
             })}
           </div>
         </div>
       </div>
-
       <div className="flex items-center justify-between border-t border-border/50 px-4 py-2">
         <button className="btn-secondary" onClick={() => setPage((p) => Math.max(p - 1, 0))} disabled={page === 0}>
           ← Previous
         </button>
-        <div className="text-sm text-muted-foreground">
-          Page {page + 1} of {totalPages}
-        </div>
+        <div className="text-sm text-muted-foreground">Page {page + 1} of {totalPages}</div>
         <button className="btn-secondary" onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))} disabled={page >= totalPages - 1}>
           Next →
         </button>
