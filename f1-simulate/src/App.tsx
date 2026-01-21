@@ -1,5 +1,5 @@
 //src/App.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { useF1Simulator } from "./lib/useF1Simulator";
 import type { AppData } from "./types";
@@ -27,15 +27,31 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
   );
 }
 
+function getYearOverrideFromPath(currentYear: number) {
+  if (typeof window === "undefined") return null;
+  const match = window.location.pathname.match(/^\/(\d{4})\/?$/);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  if (Number.isNaN(year)) return null;
+  if (year < 2020 || year > currentYear) return null;
+  return year;
+}
+
 export default function App() {
-  const sim = useF1Simulator();
+  const currentYear = new Date().getUTCFullYear();
+  const yearOverride = getYearOverrideFromPath(currentYear);
+  const sim = useF1Simulator({ yearOverride });
   const { data, error, loading } = sim;
+  const displayYear = data?.year ?? yearOverride ?? currentYear;
 
   return (
     <div className="min-h-dvh">
       <header className="container-page flex flex-col gap-2">
-        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">🏁 F1 2025 Championship Simulator</h1>
+        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">🏁 F1 {displayYear} Championship Simulator</h1>
         <p className="text-muted-foreground">Predict the championship outcome based on your scenarios</p>
+        {currentYear >= 2026 && displayYear !== 2025 ? (
+          <a className="btn-secondary w-fit" href="/2025">↩︎ View 2025 season</a>
+        ) : null}
       </header>
 
       {loading ? (
@@ -141,7 +157,7 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
   useEffect(() => {
     let cancelled = false;
     async function loadTallyAndWins() {
-      const year = new Date().getUTCFullYear();
+      const year = data?.year || new Date().getUTCFullYear();
       try {
         const [tallyRes, winsRes] = await Promise.all([
           fetch(`https://f1-autocache.djsmanchanda.workers.dev/api/f1/position-tally.json?year=${year}`),
@@ -240,7 +256,7 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
     async function loadPrev() {
       if (leaderId == null || prevIndex < 0) { setPrevPoints(null); setLeaderPrevPts(null); setPrevOrder(null); return; }
       try {
-        const year = new Date().getUTCFullYear();
+        const year = data?.year || new Date().getUTCFullYear();
         const r = await fetch(`https://f1-autocache.djsmanchanda.workers.dev/api/f1/standings.json?year=${year}`);
         if (!r.ok) throw new Error(String(r.status));
         const rows: any[] = await r.json();
@@ -407,10 +423,11 @@ function StandingsTable({ data, remainingRaces, remainingSprints }: { data: AppD
                   <div className="px-1">
                     <div className="flex items-center gap-2">
                       <span className="inline-flex items-center justify-center w-7 h-7 rounded-[35%] bg-neutral-200/80 flex-shrink-0">
+                        <span className="text-[0.6rem] font-semibold text-neutral-700">{num}</span>
                         <img
                           src={`/driver_numbers/${num}.png`}
                           alt={`#${num}`}
-                          className="h-5 w-5 object-contain"
+                          className="h-5 w-5 object-contain absolute"
                           onError={(e) => ((e.currentTarget.style.display = 'none'), undefined)}
                         />
                       </span>
@@ -464,11 +481,53 @@ function ScenarioEditor({ data, scenarios, setScenarioList, remainingRaces, rema
   if (!data) return null;
   const total = remainingRaces.length + remainingSprints.length;
   const [selected, setSelected] = useState(0);
+  const getPerPage = () => {
+    if (typeof window === "undefined") return 6;
+    const w = window.innerWidth;
+    if (w < 480) return 3;
+    if (w < 640) return 4;
+    if (w < 768) return 5;
+    if (w < 1024) return 7;
+    return 9;
+  };
+  const [page, setPage] = useState(0);
+  const [perPage, setPerPage] = useState(() => getPerPage());
+  const lastSelectedRef = useRef<number>(0);
   const shortName = (name: string) => name.replace(/\s*Grand Prix$/i, "").trim();
-  const options = [
-    ...remainingRaces.map((r, i) => ({ id: i, label: `🏁 ${shortName(r.raceName)}` })),
-    ...remainingSprints.map((s, i) => ({ id: remainingRaces.length + i, label: `⚡ ${shortName(s.raceName)}` })),
-  ];
+  const options = remainingRaces.flatMap((r, i) => {
+    const sprintIdx = remainingSprints.findIndex((s) => s.round === r.round);
+    const list: Array<{ id: number; label: string; week: number; kind: "race" | "sprint" }> = [];
+    if (sprintIdx >= 0) {
+      list.push({ id: remainingRaces.length + sprintIdx, label: `⚡ ${shortName(r.raceName)}`, week: i, kind: "sprint" });
+    }
+    list.push({ id: i, label: `🏁 ${shortName(r.raceName)}`, week: i, kind: "race" });
+    return list;
+  });
+  const pageCount = Math.max(1, Math.ceil(options.length / perPage));
+  const pageStart = page * perPage;
+  const visibleOptions = options.slice(pageStart, pageStart + perPage);
+  const selectedMeta = options.find((o) => o.id === selected);
+
+  useEffect(() => {
+    const onResize = () => setPerPage(getPerPage());
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    setPage((p) => Math.min(p, Math.max(0, pageCount - 1)));
+  }, [pageCount]);
+
+  useEffect(() => {
+    if (lastSelectedRef.current === selected) return;
+    lastSelectedRef.current = selected;
+    const idx = options.findIndex((o) => o.id === selected);
+    if (idx >= 0) {
+      const nextPage = Math.floor(idx / perPage);
+      setPage((p) => (p === nextPage ? p : nextPage));
+    }
+  }, [selected, perPage, options.length]);
 
   // Copy a single scenario from the selected event to all events (append)
   const copyOneScenarioToAll = (idxInList: number) => {
@@ -484,23 +543,41 @@ function ScenarioEditor({ data, scenarios, setScenarioList, remainingRaces, rema
 
   return (
     <div className="space-y-3">
-  <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap py-1 scrollbar-slim">
-        {options.map((o) => {
-          const isSel = selected === o.id;
-          return (
-            <button
-              key={o.id}
-              type="button"
-              className={`btn-secondary whitespace-nowrap snap-start ${isSel ? "opacity-60 cursor-default" : ""}`}
-              aria-pressed={isSel}
-              onClick={() => !isSel && setSelected(o.id)}
-              disabled={isSel}
-              title={o.label}
-            >
-              {o.label}
-            </button>
-          );
-        })}
+      <div className="flex items-center gap-2">
+        <button
+          className="btn-secondary"
+          onClick={() => setPage((p) => Math.max(0, p - 1))}
+          disabled={page === 0}
+          title="Previous race weeks"
+        >
+          ←
+        </button>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {visibleOptions.map((o) => {
+            const isSel = selected === o.id;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                className={`btn-secondary whitespace-nowrap ${isSel ? "opacity-60 cursor-default" : ""}`}
+                aria-pressed={isSel}
+                onClick={() => !isSel && setSelected(o.id)}
+                disabled={isSel}
+                title={`Race week ${o.week + 1} • ${o.label}`}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          className="btn-secondary"
+          onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+          disabled={page >= pageCount - 1}
+          title="Next race weeks"
+        >
+          →
+        </button>
       </div>
 
       <div className="card p-4">
@@ -509,7 +586,8 @@ function ScenarioEditor({ data, scenarios, setScenarioList, remainingRaces, rema
           const full = isRace
             ? `🏁 ${remainingRaces[selected]?.raceName ?? ""}`
             : `⚡ ${remainingSprints[selected - remainingRaces.length]?.raceName ?? ""}`;
-          return <h3 className="font-semibold mb-3">{full}</h3>;
+          const weekLabel = selectedMeta ? `Race week ${selectedMeta.week + 1}` : "Race week";
+          return <h3 className="font-semibold mb-3">{weekLabel} · {full}</h3>;
         })()}
         <ScenarioList
           eventIndex={selected}
@@ -529,8 +607,9 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
   const takenDrivers = new Set((value || []).filter((s) => s.type === "position").map((s) => s.driver1));
   const takenPositions = new Set((value || []).filter((s) => s.type === "position").map((s) => s.value));
   const firstAvailable = drivers.find((d) => !takenDrivers.has(d)) ?? drivers[0];
+  const maxPositions = Math.max(20, drivers.length);
   const add = () => {
-    const firstAvailablePosition = Array.from({ length: 20 }, (_, i) => String(i + 1)).find((p) => !takenPositions.has(p)) ?? "1";
+    const firstAvailablePosition = Array.from({ length: maxPositions }, (_, i) => String(i + 1)).find((p) => !takenPositions.has(p)) ?? "1";
     onChange([...(value || []), { type: "position", driver1: firstAvailable, value: firstAvailablePosition }]);
   };
   const remove = (idx: number) => onChange(value.filter((_, i) => i !== idx));
@@ -557,7 +636,7 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
           const othersTakenPos = new Set((value || []).filter((s, j) => j !== idx && s.type === "position").map((s) => s.value));
           if (othersTakenPos.has(next.value)) {
             // Find first available position
-            const availPos = Array.from({ length: 20 }, (_, i) => String(i + 1)).find((p) => !othersTakenPos.has(p));
+            const availPos = Array.from({ length: maxPositions }, (_, i) => String(i + 1)).find((p) => !othersTakenPos.has(p));
             if (availPos != null) next.value = availPos;
           }
         }
@@ -578,12 +657,12 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
         </button>
       ) : null}
       {(value || []).map((s, idx) => (
-        <div key={idx} className="flex gap-2 items-center">
-          <select className="card px-3 py-2 w-40" value={s.type} onChange={(e) => update(idx, { type: e.target.value as any })}>
+        <div key={idx} className="flex flex-col md:flex-row gap-2 md:items-center">
+          <select className="card px-3 py-2 w-full md:w-40" value={s.type} onChange={(e) => update(idx, { type: e.target.value as any })}>
             <option value="position">Set Position</option>
             <option value="above">A Above B</option>
           </select>
-          <select className="card px-3 py-2 flex-1 min-w-0" value={s.driver1} onChange={(e) => update(idx, { driver1: parseInt(e.target.value, 10) })}>
+          <select className="card px-3 py-2 w-full md:flex-1 min-w-0" value={s.driver1} onChange={(e) => update(idx, { driver1: parseInt(e.target.value, 10) })}>
             {drivers.map((d) => {
               const isTaken = takenDrivers.has(d) && !(s.type === "position" && s.driver1 === d);
               return (
@@ -595,8 +674,8 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
             })}
           </select>
           {s.type === "position" ? (
-            <select className="card px-3 py-2 w-44" value={s.value} onChange={(e) => update(idx, { value: e.target.value })}>
-              {Array.from({ length: 20 }, (_, i) => {
+            <select className="card px-3 py-2 w-full md:w-44" value={s.value} onChange={(e) => update(idx, { value: e.target.value })}>
+              {Array.from({ length: maxPositions }, (_, i) => {
                 const pos = String(i + 1);
                 const isTaken = takenPositions.has(pos) && s.value !== pos;
                 return (
@@ -608,13 +687,13 @@ function ScenarioList({ eventIndex: _eventIndex, drivers, driverNames, value, on
               })}
             </select>
           ) : (
-            <select className="card px-3 py-2 w-44" value={s.value} onChange={(e) => update(idx, { value: e.target.value })}>
+            <select className="card px-3 py-2 w-full md:w-44" value={s.value} onChange={(e) => update(idx, { value: e.target.value })}>
               {drivers.filter((d) => d !== s.driver1).map((d) => (
                 <option key={d} value={String(d)}>{`#${d} — ${driverNames[d] || `Driver #${d}`}`}</option>
               ))}
             </select>
           )}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 md:ml-auto">
             <button className="btn-secondary" title="Move up" onClick={() => move(idx, idx - 1)} disabled={idx === 0}>↑</button>
             <button className="btn-secondary" title="Move down" onClick={() => move(idx, idx + 1)} disabled={idx >= (value.length - 1)}>↓</button>
             {onCopyOne ? (
@@ -1465,6 +1544,12 @@ function PointsProgression({ data }: { data: AppData }) {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (data?.rosterTeams && Object.keys(data.rosterTeams).length > 0) {
+      setTeamByNum(data.rosterTeams);
+    }
+  }, [data?.rosterTeams]);
 
   // Initialize selection once when rows arrive
   useEffect(() => {

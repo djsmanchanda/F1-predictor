@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppData, DriverNum, ResultItem, Scenario, SimulationType } from "../types";
 
-const RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1, ...Array(10).fill(0)];
-const SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1, ...Array(12).fill(0)];
+const RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1, ...Array(12).fill(0)];
+const SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1, ...Array(14).fill(0)];
 const F1_WORKER_BASE_URL = "https://f1-autocache.djsmanchanda.workers.dev";
 
 type SimulationMode = SimulationType | "momentum" | "recent-form";
 
-export function useF1Simulator() {
+export function useF1Simulator(options?: { yearOverride?: number | null }) {
   const [data, setData] = useState<AppData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,13 +23,15 @@ export function useF1Simulator() {
   useEffect(() => {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 6000);
-    fetch("/api/data", { signal: controller.signal })
+    const yearParam = options?.yearOverride ? `?year=${options.yearOverride}` : "";
+    fetch(`/api/data${yearParam}`, { signal: controller.signal })
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then(async (json) => {
-        setData(json);
+        const year = json.year || options?.yearOverride || new Date().getUTCFullYear();
+        setData(applyRosterOverrides({ ...json, year }, year));
         (async () => {
           try {
             const year = json.year || new Date().getUTCFullYear();
@@ -44,9 +46,9 @@ export function useF1Simulator() {
       })
       .catch(async (e) => {
         try {
-          const year = new Date().getUTCFullYear();
-          const direct = await fetchFromCacheEndpoints(year);
-          setData(direct);
+          const fallbackYear = options?.yearOverride || new Date().getUTCFullYear();
+          const direct = await fetchFromCacheEndpoints(fallbackYear);
+          setData(applyRosterOverrides(direct, fallbackYear));
         } catch (e2) {
           setError((e2 as Error).message || (e as Error).message || "Failed to load");
         }
@@ -145,8 +147,17 @@ export function useF1Simulator() {
   }
 
   function generateOrder(drivers: DriverNum[], scList: Scenario[], top5: DriverNum[], simType: SimulationMode, formWeights?: Record<number, number>, unpredictScale?: number) {
+    const maxPositions = Math.max(20, drivers.length);
+    const shuffle = (list: DriverNum[]) => {
+      const out = [...list];
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+      }
+      return out;
+    };
     for (let attempt = 0; attempt < 10000; attempt++) {
-      let order = [...drivers].sort(() => Math.random() - 0.5);
+      let order = shuffle(drivers);
 
       if (simType === "realistic") {
         const rand = Math.random();
@@ -217,7 +228,7 @@ export function useF1Simulator() {
       let valid = true;
       for (const s of scList) {
         if (s.type === "position") {
-          const pos = Math.max(1, Math.min(20, parseInt(s.value, 10))) - 1;
+          const pos = Math.max(1, Math.min(maxPositions, parseInt(s.value, 10))) - 1;
           const idx = order.indexOf(s.driver1);
           if (idx !== -1 && pos < order.length) {
             [order[idx], order[pos]] = [order[pos], order[idx]];
@@ -230,13 +241,14 @@ export function useF1Simulator() {
       }
       if (valid) return order;
     }
-    return [...drivers].sort(() => Math.random() - 0.5);
+    return shuffle(drivers);
   }
 
   function simulate(iterations: number, simTypeRaw: SimulationMode): ResultItem[] {
     if (!data) return [];
     const top5 = sortedDriversTop5;
     const actualIterations = iterations;
+    const fastestLapEnabled = (data.year ?? new Date().getUTCFullYear()) <= 2024;
 
     let formWeights: Record<number, number> | undefined;
     if (simTypeRaw === "recent-form") {
@@ -255,12 +267,26 @@ export function useF1Simulator() {
       winCounts[d] = 0;
       pointsTotals[d] = 0;
     });
+    const maxPointsPossible = remainingRaces.length * 25 + remainingSprints.length * 8;
     for (let sim = 0; sim < actualIterations; sim++) {
       const simPoints: Record<number, number> = {};
-      data.drivers.forEach((d) => (simPoints[d] = data.currentPoints[d] || 0));
+      data.drivers.forEach((d) => {
+        const base = data.currentPoints[d] || 0;
+        if (simTypeRaw === "standard") {
+          const shock = Math.round((Math.random() - 0.5) * maxPointsPossible * 0.2);
+          simPoints[d] = Math.max(0, base + shock);
+        } else {
+          simPoints[d] = base;
+        }
+      });
       for (let r = 0; r < remainingRaces.length; r++) {
         const order = generateOrder(data.drivers, scenarios[r] || [], top5, simTypeRaw, formWeights, unpredictScale);
         order.forEach((driver, pos) => (simPoints[driver] += RACE_POINTS[pos]));
+        if (fastestLapEnabled && order.length > 0) {
+          const eligible = order.slice(0, Math.min(10, order.length));
+          const flDriver = eligible[Math.floor(Math.random() * eligible.length)];
+          if (flDriver != null) simPoints[flDriver] += 1;
+        }
       }
       for (let s = 0; s < remainingSprints.length; s++) {
         const idx = remainingRaces.length + s;
@@ -334,6 +360,104 @@ export function useF1Simulator() {
     lastResultsRef, lastSimTypeRef,
     recentFormWeeks, setRecentFormWeeks, fetchRecentFormData,
     unpredictability, setUnpredictability,
+  };
+}
+
+type RosterEntry = { name: string; number: number; team: string };
+
+function getRosterForYear(year: number): RosterEntry[] | null {
+  if (year !== 2026) return null;
+  return [
+    { team: "McLaren", name: "Lando Norris", number: 1 },
+    { team: "McLaren", name: "Oscar Piastri", number: 81 },
+    { team: "Mercedes", name: "George Russell", number: 63 },
+    { team: "Mercedes", name: "Andrea Kimi Antonelli", number: 12 },
+    { team: "Red Bull Racing", name: "Max Verstappen", number: 3 },
+    { team: "Red Bull Racing", name: "Isack Hadjar", number: 6 },
+    { team: "Ferrari (Scuderia)", name: "Charles Leclerc", number: 16 },
+    { team: "Ferrari (Scuderia)", name: "Lewis Hamilton", number: 44 },
+    { team: "Williams", name: "Alexander Albon", number: 23 },
+    { team: "Williams", name: "Carlos Sainz Jr.", number: 55 },
+    { team: "Racing Bulls", name: "Liam Lawson", number: 30 },
+    { team: "Racing Bulls", name: "Arvid Lindblad", number: 41 },
+    { team: "Aston Martin Aramco Honda", name: "Fernando Alonso", number: 14 },
+    { team: "Aston Martin Aramco Honda", name: "Lance Stroll", number: 18 },
+    { team: "TGR Haas F1 Team", name: "Esteban Ocon", number: 31 },
+    { team: "TGR Haas F1 Team", name: "Oliver Bearman", number: 87 },
+    { team: "Revolut Audi F1 Team", name: "Nico Hulkenberg", number: 27 },
+    { team: "Revolut Audi F1 Team", name: "Gabriel Bortoleto", number: 5 },
+    { team: "BWT Alpine F1 Team", name: "Pierre Gasly", number: 10 },
+    { team: "BWT Alpine F1 Team", name: "Franco Colapinto", number: 43 },
+    { team: "Cadillac Formula 1 Team", name: "Sergio Pérez", number: 11 },
+    { team: "Cadillac Formula 1 Team", name: "Valtteri Bottas", number: 77 },
+  ];
+}
+
+function normalizeName(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function applyRosterOverrides(appData: AppData, year: number): AppData {
+  if (appData.year && appData.year !== year) return appData;
+  const roster = getRosterForYear(year);
+  if (!roster) return appData;
+
+  const byName = new Map<string, RosterEntry>();
+  for (const entry of roster) byName.set(normalizeName(entry.name), entry);
+
+  const pointsByNum = appData.currentPoints || {};
+  const nameByNum = appData.driverNames || {};
+
+  const newDriverNames: Record<number, string> = {};
+  const newCurrentPoints: Record<number, number> = {};
+  const newDrivers: number[] = [];
+  const rosterTeams: Record<number, string> = {};
+  const seenNames = new Set<string>();
+
+  // Start with API-provided drivers, remap numbers if roster overrides exist
+  for (const [numStr, name] of Object.entries(nameByNum)) {
+    const origNum = parseInt(numStr, 10);
+    if (!origNum) continue;
+    const normalized = normalizeName(name);
+    const override = byName.get(normalized);
+    const targetNum = override?.number ?? origNum;
+    if (newDriverNames[targetNum] && newDriverNames[targetNum] !== name) {
+      // collision; keep original number to avoid overwriting
+      newDriverNames[origNum] = name;
+      newCurrentPoints[origNum] = pointsByNum[origNum] ?? 0;
+      if (!newDrivers.includes(origNum)) newDrivers.push(origNum);
+    } else {
+      newDriverNames[targetNum] = override?.name ?? name;
+      newCurrentPoints[targetNum] = pointsByNum[origNum] ?? 0;
+      if (!newDrivers.includes(targetNum)) newDrivers.push(targetNum);
+      if (override?.team) rosterTeams[targetNum] = override.team;
+    }
+    seenNames.add(normalized);
+  }
+
+  // Add roster-only entries missing from API (0 points) to keep expected roster visible
+  for (const entry of roster) {
+    const normalized = normalizeName(entry.name);
+    if (seenNames.has(normalized)) continue;
+    if (!newDriverNames[entry.number]) {
+      newDriverNames[entry.number] = entry.name;
+      newCurrentPoints[entry.number] = 0;
+      newDrivers.push(entry.number);
+      rosterTeams[entry.number] = entry.team;
+    }
+  }
+
+  return {
+    ...appData,
+    driverNames: newDriverNames,
+    currentPoints: newCurrentPoints,
+    drivers: newDrivers,
+    rosterTeams,
   };
 }
 

@@ -16,6 +16,7 @@ export type AppData = {
   drivers: DriverNum[];
   allRaces: EventInfo[];
   allSprints: EventInfo[];
+  rosterTeams?: Record<DriverNum, string>;
 };
 
 export type ScenarioPosition = { type: "position"; driver1: DriverNum; value: string /* position 1..20 */ };
