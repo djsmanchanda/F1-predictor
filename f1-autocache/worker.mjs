@@ -15,7 +15,7 @@ const WINS_KEY = (y) => `f1:${y}:wins`;
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 // Increment when cache-generation behavior changes so an existing fresh cache
 // cannot mask a deployed data-pipeline fix.
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 // Historical behavior (kept for compatibility): last fully completed race round
 const LAST_KEY = (y) => `f1:${y}:last-round`;
 // New: track last processed stage (round*10 + stage), where stage: 1=sprint done, 2=race done
@@ -74,6 +74,37 @@ async function getSprintResults(year, round) {
   } catch {
     return []; // no sprint or not available
   }
+}
+
+async function getSeasonResultsByRound(year, session) {
+  const rowsKey = session === "sprint" ? "SprintResults" : "Results";
+  const byRound = new Map();
+  let offset = 0;
+  let total = Infinity;
+
+  // Jolpi caps a response at 100 results. Paginating the season feed needs far
+  // fewer requests than fetching race and sprint data for every round.
+  while (offset < total) {
+    const data = await jget(`${JOLPI}/${year}/${session}/?limit=100&offset=${offset}`);
+    const page = data?.MRData ?? {};
+    const races = page?.RaceTable?.Races ?? [];
+    total = Number(page.total ?? 0);
+    const received = Number(page.limit ?? 0);
+
+    for (const race of races) {
+      const round = Number(race.round);
+      const entries = Array.isArray(race?.[rowsKey]) ? race[rowsKey] : [];
+      if (!Number.isFinite(round) || entries.length === 0) continue;
+      const current = byRound.get(round) || [];
+      current.push(...entries);
+      byRound.set(round, current);
+    }
+
+    if (received <= 0) break;
+    offset += received;
+  }
+
+  return byRound;
 }
 
 // ---------- Manual override helpers ----------
@@ -282,7 +313,12 @@ function parsePositionSelection(input) {
 }
 
 async function computeAndSave(env, year) {
-  const [races, drivers] = await Promise.all([getRaces(year), getDrivers(year)]);
+  const [races, drivers, raceResultsByRound, sprintResultsByRound] = await Promise.all([
+    getRaces(year),
+    getDrivers(year),
+    getSeasonResultsByRound(year, "results"),
+    getSeasonResultsByRound(year, "sprint")
+  ]);
   const { rounds } = buildCompletedRounds(races);
 
   const perRoundPoints = [];
@@ -355,13 +391,8 @@ async function computeAndSave(env, year) {
     const raceTimeISO = roundInfo.raceTime instanceof Date ? roundInfo.raceTime.toISOString() : String(roundInfo.raceTime ?? "");
     const sprintTimeISO = roundInfo.sprintTime instanceof Date ? roundInfo.sprintTime.toISOString() : (roundInfo.sprintTime ? String(roundInfo.sprintTime) : null);
 
-    // Jolpi rate-limits bursts of requests. Only query the sprint endpoint for
-    // weekends that actually have a scheduled sprint; querying it for every
-    // round caused the live refresh to stop partway through the season.
-    const [sprintResRaw, raceResRaw] = await Promise.all([
-      sprintTimeISO ? getSprintResults(year, roundNum).catch(() => []) : Promise.resolve([]),
-      getRaceResults(year, roundNum).catch(() => [])
-    ]);
+    const sprintResRaw = sprintResultsByRound.get(roundNum) || [];
+    const raceResRaw = raceResultsByRound.get(roundNum) || [];
 
     const [ovSprint, ovRace] = await Promise.all([
       getOverride(env, year, roundNum, "sprint"),
