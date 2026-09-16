@@ -13,6 +13,9 @@ const WINS_KEY = (y) => `f1:${y}:wins`;
 // Cron triggers are best-effort.  Keep a request-driven safety net so a missed
 // trigger can never leave the public standings stale for months.
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+// Increment when cache-generation behavior changes so an existing fresh cache
+// cannot mask a deployed data-pipeline fix.
+const CACHE_VERSION = 2;
 // Historical behavior (kept for compatibility): last fully completed race round
 const LAST_KEY = (y) => `f1:${y}:last-round`;
 // New: track last processed stage (round*10 + stage), where stage: 1=sprint done, 2=race done
@@ -577,6 +580,7 @@ async function computeAndSave(env, year) {
   const json = JSON.stringify(rowsToJSON(headers, rows));
   const meta = JSON.stringify({
     year,
+    cacheVersion: CACHE_VERSION,
     lastUpdated: new Date().toISOString(),
     roundsCompleted: completedCount,
     roundsTotal: rounds.length,
@@ -625,8 +629,9 @@ async function refreshIfStale(env, year) {
   const rawMeta = await env.F1_KV.get(META_KEY(year));
   if (rawMeta) {
     try {
-      const lastUpdated = Date.parse(JSON.parse(rawMeta).lastUpdated);
-      if (Number.isFinite(lastUpdated) && Date.now() - lastUpdated < REFRESH_INTERVAL_MS) {
+      const meta = JSON.parse(rawMeta);
+      const lastUpdated = Date.parse(meta.lastUpdated);
+      if (meta.cacheVersion === CACHE_VERSION && Number.isFinite(lastUpdated) && Date.now() - lastUpdated < REFRESH_INTERVAL_MS) {
         return false;
       }
     } catch {
