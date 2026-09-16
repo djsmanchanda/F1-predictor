@@ -15,7 +15,7 @@ const WINS_KEY = (y) => `f1:${y}:wins`;
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 // Increment when cache-generation behavior changes so an existing fresh cache
 // cannot mask a deployed data-pipeline fix.
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 // Historical behavior (kept for compatibility): last fully completed race round
 const LAST_KEY = (y) => `f1:${y}:last-round`;
 // New: track last processed stage (round*10 + stage), where stage: 1=sprint done, 2=race done
@@ -49,7 +49,9 @@ async function getRaces(year) {
 }
 
 async function getDrivers(year) {
-  const data = await jget(`${JOLPI}/${year}/drivers/`);
+  // The default Jolpi page is only 30 drivers. A season may include reserve
+  // entries too, so request the complete active list before matching results.
+  const data = await jget(`${JOLPI}/${year}/drivers/?limit=100`);
   const list = data?.MRData?.DriverTable?.Drivers ?? [];
   return list.map(d => ({
     key: (d.code || d.driverId || fullName(d)).toLowerCase(),
