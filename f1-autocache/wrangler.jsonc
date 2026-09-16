@@ -2,7 +2,7 @@
   "$schema": "../f1-simulate/node_modules/wrangler/config-schema.json",
   "name": "f1-autocache",
   "main": "worker.mjs",
-  "compatibility_date": "2026-09-17",
+  "compatibility_date": "2026-09-16",
   "kv_namespaces": [
     {
       "binding": "F1_KV",
