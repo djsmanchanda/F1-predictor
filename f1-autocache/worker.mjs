@@ -10,6 +10,9 @@ const BREAKDOWN_KEY = (y) => `f1:${y}:breakdown`;
 const RACE_POSITIONS_KEY = (y) => `f1:${y}:race-positions`;
 const POSITION_TALLY_KEY = (y) => `f1:${y}:position-tally`;
 const WINS_KEY = (y) => `f1:${y}:wins`;
+// Cron triggers are best-effort.  Keep a request-driven safety net so a missed
+// trigger can never leave the public standings stale for months.
+const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 // Historical behavior (kept for compatibility): last fully completed race round
 const LAST_KEY = (y) => `f1:${y}:last-round`;
 // New: track last processed stage (round*10 + stage), where stage: 1=sprint done, 2=race done
@@ -615,12 +618,46 @@ async function maybeUpdate(env, year) {
   }
 }
 
+async function refreshIfStale(env, year) {
+  const rawMeta = await env.F1_KV.get(META_KEY(year));
+  if (rawMeta) {
+    try {
+      const lastUpdated = Date.parse(JSON.parse(rawMeta).lastUpdated);
+      if (Number.isFinite(lastUpdated) && Date.now() - lastUpdated < REFRESH_INTERVAL_MS) {
+        return false;
+      }
+    } catch {
+      // Rebuild malformed metadata rather than continuing to serve it.
+    }
+  }
+
+  const result = await maybeUpdate(env, year);
+  return Boolean(result);
+}
+
 export default {
   async fetch(req, env) {
     try {
       const url = new URL(req.url);
       const year = Number(url.searchParams.get("year")) || new Date().getUTCFullYear();
       const method = req.method.toUpperCase();
+
+      // The scheduled handler is a convenience, not the only refresh path.
+      // Before returning public data, synchronously rebuild an expired cache so
+      // a missed Cloudflare cron does not freeze the championship table.
+      const readPaths = new Set([
+        "/api/f1/standings.csv",
+        "/api/f1/standings.json",
+        "/api/f1/meta",
+        "/api/f1/rounds.json",
+        "/api/f1/breakdown.json",
+        "/api/f1/race-positions.json",
+        "/api/f1/position-tally.json",
+        "/api/f1/wins.json"
+      ]);
+      if (method === "GET" && readPaths.has(url.pathname)) {
+        await refreshIfStale(env, year);
+      }
 
       // Simple HTML escape
       const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
