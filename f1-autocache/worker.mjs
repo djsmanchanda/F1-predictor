@@ -352,8 +352,11 @@ async function computeAndSave(env, year) {
     const raceTimeISO = roundInfo.raceTime instanceof Date ? roundInfo.raceTime.toISOString() : String(roundInfo.raceTime ?? "");
     const sprintTimeISO = roundInfo.sprintTime instanceof Date ? roundInfo.sprintTime.toISOString() : (roundInfo.sprintTime ? String(roundInfo.sprintTime) : null);
 
+    // Jolpi rate-limits bursts of requests. Only query the sprint endpoint for
+    // weekends that actually have a scheduled sprint; querying it for every
+    // round caused the live refresh to stop partway through the season.
     const [sprintResRaw, raceResRaw] = await Promise.all([
-      getSprintResults(year, roundNum).catch(() => []),
+      sprintTimeISO ? getSprintResults(year, roundNum).catch(() => []) : Promise.resolve([]),
       getRaceResults(year, roundNum).catch(() => [])
     ]);
 
