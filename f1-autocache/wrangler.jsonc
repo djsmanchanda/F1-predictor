@@ -1,0 +1,15 @@
+{
+  "$schema": "../f1-simulate/node_modules/wrangler/config-schema.json",
+  "name": "f1-autocache",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-17",
+  "kv_namespaces": [
+    {
+      "binding": "F1_KV",
+      "id": "60f38154b35e4a4db53bd9d4c5940f8b"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 * * * *"]
+  }
+}
